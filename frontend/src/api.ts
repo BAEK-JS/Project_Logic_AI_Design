@@ -44,6 +44,57 @@ export async function generateDiagram(
   return res.json() as Promise<GenerateResult>;
 }
 
+export async function extractTextFromFile(file: File): Promise<{ text: string; filename: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${prefix}/api/extract-text`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<{ text: string; filename: string }>;
+}
+
+export async function analyzeFile(
+  file: File,
+  language: CodeLang,
+  apiKey: string
+): Promise<GenerateResult & { extracted_text?: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("language", language);
+  form.append("api_key", apiKey);
+  const res = await fetch(`${prefix}/api/analyze-file`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<GenerateResult & { extracted_text?: string }>;
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export async function chatRefine(
+  question: string,
+  currentMermaid: string,
+  currentBlocks: LogicBlock[],
+  history: ChatMessage[],
+  language: CodeLang,
+  apiKey: string,
+): Promise<GenerateResult> {
+  const res = await fetch(`${prefix}/api/chat-refine`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question,
+      current_mermaid: currentMermaid,
+      current_blocks: currentBlocks,
+      history,
+      language,
+      api_key: apiKey,
+    }),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<GenerateResult>;
+}
+
 export async function fillBlockCodes(
   requirements: string,
   mermaid: string,

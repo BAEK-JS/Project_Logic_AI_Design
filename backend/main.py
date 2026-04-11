@@ -3,16 +3,24 @@
 
 from __future__ import annotations
 
+import io
 import json
 import re
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from openai import APIError, OpenAI
 from pydantic import BaseModel
 
-from prompts import build_clipboard_prompt, fill_codes_system_user
+from prompts import (
+    build_clipboard_prompt,
+    default_system_prompt,
+    build_user_content,
+    file_analysis_system_prompt,
+    build_file_analysis_user,
+    fill_codes_system_user,
+)
 
 app = FastAPI(title="Logic Mapper API", version="1.0.0")
 
@@ -144,6 +152,109 @@ def fill_codes(body: FillCodesBody) -> dict:
     except (json.JSONDecodeError, ValueError) as e:
         raise HTTPException(status_code=502, detail=f"JSON 파싱 실패: {e}")
     return {"blocks": blocks}
+
+
+def _extract_text_from_file(filename: str, content: bytes) -> str:
+    """업로드된 파일에서 텍스트를 추출합니다."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    if ext in ("txt", "md", "csv", "log", "rst"):
+        for enc in ("utf-8", "utf-8-sig", "cp949", "euc-kr", "latin-1"):
+            try:
+                return content.decode(enc)
+            except UnicodeDecodeError:
+                continue
+        return content.decode("utf-8", errors="replace")
+
+    if ext == "pdf":
+        try:
+            import PyPDF2  # type: ignore
+            reader = PyPDF2.PdfReader(io.BytesIO(content))
+            pages = [p.extract_text() or "" for p in reader.pages]
+            return "\n\n".join(p.strip() for p in pages if p.strip())
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"PDF 파싱 실패: {e}")
+
+    if ext in ("docx",):
+        try:
+            import docx  # type: ignore
+            doc = docx.Document(io.BytesIO(content))
+            return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"DOCX 파싱 실패: {e}")
+
+    if ext in ("xlsx", "xls"):
+        try:
+            import openpyxl  # type: ignore
+            wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+            lines: list[str] = []
+            for ws in wb.worksheets:
+                lines.append(f"[시트: {ws.title}]")
+                for row in ws.iter_rows(values_only=True):
+                    row_str = "\t".join("" if v is None else str(v) for v in row)
+                    if row_str.strip():
+                        lines.append(row_str)
+            return "\n".join(lines)
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Excel 파싱 실패: {e}")
+
+    raise HTTPException(
+        status_code=415,
+        detail=f"지원하지 않는 파일 형식입니다: .{ext}  (지원: txt, md, csv, pdf, docx, xlsx)",
+    )
+
+
+@app.post("/api/extract-text")
+async def extract_text(file: UploadFile = File(...)) -> dict:
+    """파일을 업로드하면 텍스트를 추출해서 반환합니다."""
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="파일 크기가 10MB를 초과합니다.")
+    text = _extract_text_from_file(file.filename or "upload.txt", content)
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="파일에서 텍스트를 추출할 수 없습니다.")
+    return {"text": text, "filename": file.filename, "size": len(content)}
+
+
+@app.post("/api/analyze-file")
+async def analyze_file(
+    file: UploadFile = File(...),
+    language: str = "java",
+    api_key: str = "",
+) -> dict:
+    """파일 업로드 → 텍스트 추출 → OpenAI로 다이어그램 생성까지 한 번에 처리합니다."""
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="파일 크기가 10MB를 초과합니다.")
+    text = _extract_text_from_file(file.filename or "upload.txt", content)
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="파일에서 텍스트를 추출할 수 없습니다.")
+
+    lang = language if language in ("c", "java", "python") else "java"
+    client = _client(api_key)
+    system = file_analysis_system_prompt(lang)
+    user = build_file_analysis_user(text, lang)
+    try:
+        r = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.15,
+            max_tokens=4096,
+        )
+    except APIError as e:
+        raise _http_from_openai(e)
+    raw = (r.choices[0].message.content or "").strip()
+    if not raw:
+        raise HTTPException(status_code=502, detail="OpenAI 응답 본문이 비었습니다.")
+    try:
+        result = _parse_ai_json(raw)
+        result["extracted_text"] = text[:2000]
+        return result
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(status_code=502, detail=f"JSON 파싱 실패: {e}. 원문 일부: {raw[:500]}")
 
 
 def _http_from_openai(e: APIError) -> HTTPException:
