@@ -1,0 +1,638 @@
+:root {
+  --bg: #0f1419;
+  --panel: #1a2332;
+  --border: #2d3a4d;
+  --text: #e7ecf3;
+  --muted: #8b9cb3;
+  --accent: #3d8bfd;
+  --accent-dim: #2563c7;
+  --ok: #34d399;
+  --err: #f87171;
+  --mono: "JetBrains Mono", "Consolas", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.app-header {
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.app-header p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.toolbar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+main.grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.2fr) minmax(300px, 1fr);
+  gap: 0;
+  min-height: calc(100vh - 72px);
+}
+
+@media (max-width: 1100px) {
+  main.grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.col {
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.col:last-child {
+  border-right: none;
+}
+
+.col-head {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.pad {
+  padding: 0.75rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+textarea,
+input[type="text"] {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem;
+  font-size: 0.85rem;
+  font-family: var(--mono);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+textarea.req {
+  flex: 1;
+  min-height: 200px;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 0.45rem 0.9rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-dim);
+}
+
+button.secondary {
+  background: var(--border);
+  color: var(--text);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: #3d4f66;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lang-row,
+.openai-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  padding: 0.45rem 0.55rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.openai-row {
+  background: rgba(61, 139, 253, 0.08);
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.openai-row .field {
+  flex: 1 1 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.openai-row .field-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.openai-row .btn-wrap {
+  display: flex;
+  align-items: flex-end;
+}
+
+.openai-row .btn-wrap button {
+  height: 2.35rem;
+  white-space: nowrap;
+}
+
+.lang-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.status {
+  font-size: 0.8rem;
+  min-height: 1.2em;
+}
+
+.status.ok {
+  color: var(--ok);
+}
+
+.status.err {
+  color: var(--err);
+}
+
+.error-panel {
+  margin-top: 0.5rem;
+  border: 1px solid var(--err);
+  border-radius: 6px;
+  background: rgba(248, 113, 113, 0.08);
+  overflow: hidden;
+}
+
+.error-panel summary {
+  cursor: pointer;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.8rem;
+  color: var(--err);
+  font-weight: 600;
+}
+
+.error-panel pre {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  max-height: 220px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.diagram-wrap {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+  background: #121820;
+  min-height: 200px;
+}
+
+.mermaid-out {
+  display: flex;
+  justify-content: center;
+}
+
+.blocks {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.block-card summary {
+  padding: 0.5rem 0.65rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.88rem;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.block-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.block-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel);
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+/* 다이어그램 노드 클릭 시 하이라이트 */
+.block-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(61, 139, 253, 0.35);
+  animation: blockFlash 1.5s ease-out forwards;
+}
+
+@keyframes blockFlash {
+  0%   { background: rgba(61, 139, 253, 0.18); }
+  100% { background: var(--panel); }
+}
+
+.block-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 블록 제목 인라인 편집 */
+.block-title-input {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 0.1rem 0.25rem;
+  border-radius: 0;
+}
+
+.block-title-input:hover,
+.block-title-input:focus {
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom-color: var(--accent);
+  outline: none;
+}
+
+/* 블록 삭제 버튼 */
+.block-delete {
+  background: transparent;
+  color: var(--muted);
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.block-delete:hover {
+  background: rgba(248, 113, 113, 0.2);
+  color: var(--err);
+}
+
+.block-id {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--accent);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.block-body {
+  padding: 0 0.65rem 0.65rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* 블록 설명 인라인 편집 */
+.block-desc-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-family: inherit;
+  padding: 0.25rem 0;
+  margin-top: 0.35rem;
+  border-radius: 0;
+}
+
+.block-desc-input:hover,
+.block-desc-input:focus {
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom-color: var(--border);
+  outline: none;
+  color: var(--text);
+}
+
+.block-code {
+  width: 100%;
+  min-height: 140px;
+  font-size: 0.8rem;
+}
+
+/* Mermaid SVG 노드 활성 강조 */
+.mermaid-out .node-active > rect,
+.mermaid-out .node-active > polygon,
+.mermaid-out .node-active > circle,
+.mermaid-out .node-active > ellipse {
+  stroke: #3d8bfd !important;
+  stroke-width: 2.5px !important;
+  filter: drop-shadow(0 0 4px rgba(61,139,253,0.7));
+}
+
+/* Mermaid 노드 hover */
+.mermaid-out g.node:hover > rect,
+.mermaid-out g.node:hover > polygon,
+.mermaid-out g.node:hover > circle {
+  stroke: #3d8bfd !important;
+  stroke-width: 2px !important;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.paste-zone {
+  margin-top: 0.5rem;
+}
+
+.paste-zone summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* ══════════════════════════════════════════
+   React Flow 다이어그램 편집기
+══════════════════════════════════════════ */
+
+/* 중앙 컬럼 패딩 재정의 (다이어그램 캔버스가 꽉 차도록) */
+.diagram-pad {
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Mermaid 가져오기 영역 */
+.mermaid-import-zone {
+  padding: 0.5rem 0.75rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.mermaid-import-zone summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.mermaid-import-textarea {
+  width: 100%;
+  font-size: 0.78rem;
+  font-family: var(--mono);
+  resize: vertical;
+}
+
+/* 다이어그램 에디터 컨테이너 */
+.diagram-editor-outer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* RF 툴바 */
+.rf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.65rem;
+  background: rgba(26, 35, 50, 0.9);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.rf-hint {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+/* RF 캔버스 래퍼 */
+.rf-canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* ══ 커스텀 노드 스타일 ══ */
+.rf-node {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  min-width: 120px;
+  max-width: 220px;
+  padding: 0;
+  cursor: default;
+  position: relative;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.rf-node:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(61,139,253,0.2);
+}
+
+.rf-node--selected,
+.rf-node.selected {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(61,139,253,0.35) !important;
+}
+
+/* 활성 노드 (클릭으로 연동된 노드) */
+.react-flow__node.node-active .rf-node {
+  border-color: #34d399 !important;
+  box-shadow: 0 0 0 3px rgba(52,211,153,0.4), 0 0 12px rgba(52,211,153,0.3) !important;
+  animation: rfNodeFlash 1.5s ease-out forwards;
+}
+
+@keyframes rfNodeFlash {
+  0%   { box-shadow: 0 0 0 4px rgba(52,211,153,0.6), 0 0 16px rgba(52,211,153,0.5); }
+  100% { box-shadow: 0 0 0 2px rgba(52,211,153,0.2); }
+}
+
+/* 노드 삭제 버튼 (우상단 ✕) */
+.rf-node-del {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+  font-size: 0.65rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.rf-node:hover .rf-node-del {
+  opacity: 1;
+}
+
+.rf-node-del:hover {
+  background: rgba(248,113,113,0.2);
+  color: var(--err);
+}
+
+.rf-node-label {
+  padding: 0.45rem 1.4rem 0.45rem 0.75rem; /* 오른쪽 여백으로 버튼과 겹침 방지 */
+  font-size: 0.82rem;
+  color: var(--text);
+  text-align: center;
+  user-select: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rf-node-input {
+  width: 100%;
+  background: rgba(255,255,255,0.07);
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-family: inherit;
+  padding: 0.4rem 0.6rem;
+  text-align: center;
+  outline: 2px solid var(--accent);
+}
+
+/* React Flow 핸들(연결점) 스타일 */
+.react-flow__handle {
+  width: 8px !important;
+  height: 8px !important;
+  background: var(--accent) !important;
+  border: 1.5px solid var(--bg) !important;
+  transition: transform 0.1s;
+}
+
+.react-flow__handle:hover {
+  transform: scale(1.4);
+}
+
+/* React Flow 엣지 */
+.react-flow__edge-path {
+  stroke: var(--border);
+  stroke-width: 1.5px;
+}
+
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--accent);
+}
+
+/* React Flow 컨트롤 버튼 다크 테마 보정 */
+.react-flow__controls-button {
+  background: var(--panel) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: rgba(61,139,253,0.15) !important;
+}
+
+/* MiniMap */
+.react-flow__minimap {
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+}
+
+/* col 전체 높이 활용 */
+.col {
+  display: flex;
+  flex-direction: column;
+}
+
+.col .pad.diagram-pad {
+  flex: 1;
+}
+
