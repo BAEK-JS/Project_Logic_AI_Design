@@ -20,6 +20,40 @@ def code_rules_for_lang(lang: str) -> str:
     return "예시 코드는 **Java** 입니다. 클래스·메서드 스켈레톤, 증권 도메인에 맞는 식별자 이름."
 
 
+LANE_SPEC = """
+다이어그램은 반드시 아래 **5개 구간(subgraph)**으로 분류하세요.
+  1. lane-init   [변수초기화]   — 연결·세션·변수·자원 초기화, 요청 수신
+  2. lane-valid  [입력값검증]   — 파라미터 유효성, 권한, 한도, 조건 검사
+  3. lane-main   [메인업무처리] — 핵심 업무 로직 (조회, 체결, 전문 송수신, 계산 등)
+  4. lane-normal [정상처리]     — 성공 응답 반환, 결과 저장, 알림, 완료 처리
+  5. lane-error  [오류처리]     — 예외·에러 처리, 재시도, 롤백, 사용자 알림
+
+Mermaid 출력 형식 (반드시 준수):
+flowchart TD
+  subgraph lane-init[변수초기화]
+    A["..."]
+  end
+  subgraph lane-valid[입력값검증]
+    B["..."]
+    E1["예외: 검증 실패"]
+  end
+  subgraph lane-main[메인업무처리]
+    C["..."]
+  end
+  subgraph lane-normal[정상처리]
+    D["완료"]
+  end
+  subgraph lane-error[오류처리]
+    E2["예외: 외부 거부"]
+    E3["롤백 및 알림"]
+  end
+  A --> B
+  B -->|유효| C
+  B -->|검증실패| E1
+  ...
+"""
+
+
 def default_system_prompt(lang: str) -> str:
     L = lang_label(lang)
     rules = code_rules_for_lang(lang)
@@ -28,21 +62,22 @@ def default_system_prompt(lang: str) -> str:
 **예시 코드 언어: {L}** (다른 언어 문법·키워드 사용 금지)
 {rules}
 
+{LANE_SPEC}
+
 **예외 처리 구간 (필수)** — 정상 플로우만 그리지 마세요.
-- Mermaid에는 **예외·오류·대안 경로**를 반드시 넣으세요. (검증 실패, 한도 초과, 거래소/외부 거부, 통신 타임아웃, 재시도, 부분 실패 후 보정, 롤백·멱등 처리 등 요건에 맞게)
-- 예외 노드는 id를 E1, EX2, ERR 등으로 구분하거나 subgraph "예외 처리"로 묶어도 됩니다.
-- "blocks"에는 정상 구간뿐 아니라 **위 예외 노드와 1:1 대응하는 블록**을 포함하고, title/description에 예외 상황을 명시하세요.
-- 각 예외 블록의 "code"에는 **해당 예외를 처리하는 {L} 예시**(분기, 에러코드 매핑, 재시도, 로깅 등)를 넣으세요.
-- 요건에 예외가 없으면 증권 업무에서 흔한 예외를 **가정(assumption)**하여 description에 적고 플로우에 반영하세요.
+- lane-error 구간에 **예외·오류·대안 경로**를 반드시 넣으세요. (검증 실패, 한도 초과, 거래소/외부 거부, 통신 타임아웃, 재시도, 롤백 등)
+- "blocks"에는 정상 구간뿐 아니라 **예외 노드와 1:1 대응하는 블록**을 포함하세요.
+- 각 예외 블록 code에는 **해당 예외를 처리하는 {L} 예시**를 넣으세요.
+- 요건에 예외가 없으면 증권 업무에서 흔한 예외를 **가정(assumption)**하여 반영하세요.
 
 반드시 **유효한 JSON 한 덩어리**만 출력하세요. 마크다운 코드펜스(```) 금지, 앞뒤 설명 금지.
 
 스키마:
 {{
   "summary": "한 문단 요약 (한국어, 정상+예외 흐름을 아우르는 요약)",
-  "mermaid": "Mermaid flowchart 또는 sequenceDiagram 문자열. 노드 id는 영문 대문자로 짧게 (예: A, B, C1). 한 줄에 한 문법 권장.",
+  "mermaid": "위 5구간 subgraph 형식을 포함한 Mermaid flowchart TD 문자열. 노드 id는 영문 대문자로 짧게.",
   "blocks": [
-    {{ "id": "A", "title": "노드 제목", "description": "이 구간에서 하는 일 (한국어)", "code": "이 구간 로직에 맞는 짧은 예시 코드 ({L}만). 해당 노드의 처리 내용을 반영. 함수 또는 모듈 단위." }}
+    {{ "id": "A", "title": "노드 제목", "description": "이 구간에서 하는 일 (한국어)", "code": "이 구간 로직에 맞는 짧은 예시 코드 ({L}만)." }}
   ]
 }}
 
@@ -60,9 +95,10 @@ def build_user_content(req_text: str, lang: str) -> str:
         "다음은 요건 문서입니다.\n\n"
         + req_text
         + "\n\n---\n**[필수 지시]**\n"
-        "1) Mermaid와 blocks에 **예외 처리 구간**을 포함하세요 (검증 실패, 외부 거부, 타임아웃, 재시도, 롤백 등). 정상 경로만이면 안 됩니다.\n"
-        "2) 예외 전용 노드·블록마다 description에 예외 상황을, code에는 그 예외를 처리하는 예시를 넣으세요.\n"
-        f"3) 예시 코드는 반드시 **{L}** 로만 작성하고 blocks[].code에 넣으세요."
+        "1) Mermaid는 lane-init/lane-valid/lane-main/lane-normal/lane-error **5개 subgraph**로 구성하세요.\n"
+        "2) lane-error 구간에 **예외 처리 노드**를 반드시 포함하세요 (검증 실패, 외부 거부, 타임아웃, 재시도, 롤백 등).\n"
+        "3) 예외 전용 노드·블록마다 description에 예외 상황을, code에는 그 예외를 처리하는 예시를 넣으세요.\n"
+        f"4) 예시 코드는 반드시 **{L}** 로만 작성하고 blocks[].code에 넣으세요."
     )
 
 
