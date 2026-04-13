@@ -1131,6 +1131,79 @@ button:disabled {
 .col .pad.diagram-pad {
   flex: 1;
   overflow: hidden;
+  min-height: 0;
+}
+
+/* 다이어그램 컬럼 전체를 flex column으로 */
+.col:has(.diagram-pad) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ─── Tauri 스플래시 / 백엔드 로딩 ─── */
+.tauri-splash {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.tauri-splash-inner {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px;
+}
+
+.tauri-splash-logo {
+  font-size: 64px;
+  color: var(--accent);
+  animation: splash-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes splash-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(0.92); }
+}
+
+.tauri-splash-inner h2 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.tauri-splash-msg {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.tauri-splash-bar {
+  width: 240px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.tauri-splash-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.tauri-splash-sub {
+  color: var(--border);
+  font-size: 0.78rem;
+  margin: 0;
 }
 
 

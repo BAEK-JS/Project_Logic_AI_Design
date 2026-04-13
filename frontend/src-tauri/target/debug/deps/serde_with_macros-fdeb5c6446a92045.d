@@ -1,0 +1,8 @@
+C:\Users\bjs15\OneDrive\Desktop\project_workspace\Project_logic_Design\logic-mapper\frontend\src-tauri\target\debug\deps\serde_with_macros-fdeb5c6446a92045.d: C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\lib.rs C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\apply.rs C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\lazy_bool.rs C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\utils.rs
+
+C:\Users\bjs15\OneDrive\Desktop\project_workspace\Project_logic_Design\logic-mapper\frontend\src-tauri\target\debug\deps\serde_with_macros-fdeb5c6446a92045.dll: C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\lib.rs C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\apply.rs C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\lazy_bool.rs C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\utils.rs
+
+C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\lib.rs:
+C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\apply.rs:
+C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\lazy_bool.rs:
+C:\Users\bjs15\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde_with_macros-3.18.0\src\utils.rs:

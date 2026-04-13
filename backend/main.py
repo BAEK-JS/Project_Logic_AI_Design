@@ -20,13 +20,15 @@ from prompts import (
     file_analysis_system_prompt,
     build_file_analysis_user,
     fill_codes_system_user,
+    chat_refine_system_prompt,
+    build_chat_refine_user,
 )
 
 app = FastAPI(title="Logic Mapper API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://(127\.0\.0\.1|localhost)(:\d+)?",
+    allow_origin_regex=r"http://(127\.0\.0\.1|localhost|tauri\.localhost)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -257,6 +259,60 @@ async def analyze_file(
         raise HTTPException(status_code=502, detail=f"JSON 파싱 실패: {e}. 원문 일부: {raw[:500]}")
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatBlockMeta(BaseModel):
+    id: str
+    title: str = ""
+    description: str = ""
+    code: str = ""
+
+
+class ChatRefineBody(BaseModel):
+    question: str
+    current_mermaid: str = ""
+    current_blocks: list[ChatBlockMeta] = []
+    history: list[ChatMessage] = []
+    language: Literal["c", "java", "python"] = "java"
+    api_key: str
+
+
+@app.post("/api/chat-refine")
+def chat_refine(body: ChatRefineBody) -> dict:
+    if not body.question.strip():
+        raise HTTPException(status_code=400, detail="question이 비었습니다.")
+    client = _client(body.api_key)
+    system = chat_refine_system_prompt(body.language)
+    user = build_chat_refine_user(
+        body.question,
+        body.current_mermaid,
+        [b.model_dump() for b in body.current_blocks],
+        [m.model_dump() for m in body.history],
+    )
+    try:
+        r = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.2,
+            max_tokens=4096,
+        )
+    except APIError as e:
+        raise _http_from_openai(e)
+    raw = (r.choices[0].message.content or "").strip()
+    if not raw:
+        raise HTTPException(status_code=502, detail="OpenAI 응답 본문이 비었습니다.")
+    try:
+        return _parse_ai_json(raw)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(status_code=502, detail=f"JSON 파싱 실패: {e}. 원문: {raw[:500]}")
+
+
 def _http_from_openai(e: APIError) -> HTTPException:
     msg = getattr(e, "message", None) or str(e)
     code = getattr(e, "code", None)
@@ -269,3 +325,34 @@ def _http_from_openai(e: APIError) -> HTTPException:
         http = 502
     detail = {"message": msg, "type": typ, "code": code}
     return HTTPException(status_code=http, detail=detail)
+
+
+# ─── Tauri 사이드카 / PyInstaller 진입점 ───────────────────────────────────────
+if __name__ == "__main__":
+    import os
+    import sys
+    import logging
+    import uvicorn
+
+    # 실행 파일 위치 기준으로 로그 파일 생성
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    log_dir = os.path.join(os.path.expanduser("~"), "AppData", "Local", "LogicMapper")
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "backend.log")
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            logging.FileHandler(log_file, encoding="utf-8"),
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
+
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=8000,
+        log_level="info",
+        access_log=True,
+    )

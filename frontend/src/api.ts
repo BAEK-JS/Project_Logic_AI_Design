@@ -1,10 +1,21 @@
 import type { CodeLang, GenerateResult, LogicBlock } from "./types";
 
-const prefix = "";
+/**
+ * Tauri v2 프로덕션: http://tauri.localhost 에서 서빙
+ * Tauri 개발 모드:  http://localhost:5173 (Vite 프록시 사용)
+ * 일반 브라우저:    http://localhost:5173 (Vite 프록시 사용)
+ */
+const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI_DEV = IS_TAURI && window.location.hostname === "localhost";
+const IS_TAURI_PROD = IS_TAURI && !IS_TAURI_DEV;
+
+const prefix = IS_TAURI_PROD ? "http://127.0.0.1:8000" : "";
 
 async function parseError(res: Response): Promise<string> {
+  // body 스트림은 한 번만 읽기 — text로 먼저 읽고 JSON 파싱 시도
+  const text = await res.text();
   try {
-    const j = await res.json();
+    const j = JSON.parse(text);
     const d = j.detail;
     if (typeof d === "string") return d;
     if (d && typeof d === "object" && "message" in d) {
@@ -15,7 +26,7 @@ async function parseError(res: Response): Promise<string> {
     }
     return JSON.stringify(j);
   } catch {
-    return await res.text();
+    return text || `HTTP ${res.status}`;
   }
 }
 

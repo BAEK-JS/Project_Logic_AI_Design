@@ -236,3 +236,44 @@ def fill_codes_system_user(
         + json.dumps(blocks_meta, ensure_ascii=False, indent=2)
     )
     return system, user
+
+
+def chat_refine_system_prompt(lang: str) -> str:
+    L = lang_label(lang)
+    return f"""당신은 증권/은행 업무 로직 다이어그램 전문가입니다. 사용자 요청에 따라 기존 다이어그램을 수정·확장합니다.
+
+규칙:
+- **유효한 JSON 한 덩어리**만 출력하세요. 마크다운·코드펜스 금지.
+- 기존 노드 id·label은 명시적으로 변경 요청이 없으면 유지하세요.
+- 새 노드는 새로운 id(영문+숫자)를 사용하세요.
+- mermaid는 flowchart TD 형식입니다.
+- 예시 코드 언어: {L}
+- 항상 전체 업데이트된 JSON을 출력하세요 (부분 출력 금지).
+
+출력 형식:
+{{ "summary": "변경 요약", "mermaid": "flowchart TD\\n...", "blocks": [ {{ "id": "...", "title": "...", "description": "...", "code": "..." }} ] }}"""
+
+
+def build_chat_refine_user(
+    question: str,
+    current_mermaid: str,
+    current_blocks: list,
+    history: list,
+) -> str:
+    history_text = ""
+    if history:
+        lines = []
+        for m in history[-6:]:  # 최근 6개만
+            role = "사용자" if m.get("role") == "user" else "AI"
+            lines.append(f"{role}: {m.get('content', '')[:300]}")
+        history_text = "\n".join(lines) + "\n\n"
+
+    return (
+        history_text
+        + "현재 Mermaid 다이어그램:\n"
+        + (current_mermaid or "(없음)")
+        + "\n\n현재 블록 목록:\n"
+        + json.dumps(current_blocks, ensure_ascii=False, indent=2)
+        + "\n\n사용자 요청: "
+        + question
+    )

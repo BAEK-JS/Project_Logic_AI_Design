@@ -117,10 +117,42 @@ function SettingsModal({ open, onClose, apiKey, onApiKeyChange, lang, onLangChan
   );
 }
 
+/* ─── Tauri 백엔드 준비 대기 훅 ─── */
+const IS_TAURI_PROD =
+  typeof window !== "undefined" &&
+  (window.location.protocol === "tauri:" || window.location.protocol === "asset:");
+
+function useBackendReady() {
+  const [ready, setReady] = useState(!IS_TAURI_PROD);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!IS_TAURI_PROD) return;
+    let cancelled = false;
+    const poll = async () => {
+      for (let i = 0; i < 40; i++) {
+        if (cancelled) return;
+        try {
+          const res = await fetch("http://127.0.0.1:8000/api/health");
+          if (res.ok) { setReady(true); return; }
+        } catch {}
+        setAttempt(i + 1);
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, []);
+
+  return { ready, attempt };
+}
+
 /* ─── App ─── */
 type InputMode = "direct" | "file";
 
 export default function App() {
+  const { ready: backendReady, attempt: backendAttempt } = useBackendReady();
+
   /* 설정 */
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [codeVisible, setCodeVisible] = useState(false);
@@ -354,6 +386,24 @@ export default function App() {
   };
 
   /* ─── JSX ─── */
+
+  // Tauri 프로덕션에서 백엔드 사이드카가 준비될 때까지 스플래시 표시
+  if (!backendReady) {
+    return (
+      <div className="tauri-splash">
+        <div className="tauri-splash-inner">
+          <div className="tauri-splash-logo">⬡</div>
+          <h2>Logic Mapper</h2>
+          <p className="tauri-splash-msg">백엔드 엔진을 시작하는 중…</p>
+          <div className="tauri-splash-bar">
+            <div className="tauri-splash-fill" style={{ width: `${Math.min(backendAttempt * 2.5, 95)}%` }} />
+          </div>
+          <p className="tauri-splash-sub">잠시만 기다려주세요 ({backendAttempt}/40)</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       {/* 설정 모달 */}
