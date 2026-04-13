@@ -1,5 +1,16 @@
 import type { CodeLang, GenerateResult, LogicBlock } from "./types";
 
+export interface FileAnalysisResult {
+  business_type: string;
+  summary: string;
+  key_flows: string[];
+  entities: string[];
+  external_systems: string[];
+  business_rules: string[];
+  exception_cases: string[];
+  extracted_text: string;
+}
+
 /**
  * Tauri v2 프로덕션: http://tauri.localhost 에서 서빙
  * Tauri 개발 모드:  http://localhost:5173 (Vite 프록시 사용)
@@ -77,6 +88,38 @@ export async function analyzeFile(
   return res.json() as Promise<GenerateResult & { extracted_text?: string }>;
 }
 
+export async function preAnalyzeFile(
+  file: File,
+  apiKey: string,
+): Promise<FileAnalysisResult> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("api_key", apiKey);
+  const res = await fetch(`${prefix}/api/pre-analyze`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<FileAnalysisResult>;
+}
+
+export async function generateFromAnalysis(
+  extractedText: string,
+  preAnalysis: FileAnalysisResult,
+  language: CodeLang,
+  apiKey: string,
+): Promise<GenerateResult> {
+  const res = await fetch(`${prefix}/api/generate-from-analysis`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      extracted_text: extractedText,
+      pre_analysis: preAnalysis,
+      language,
+      api_key: apiKey,
+    }),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<GenerateResult>;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -89,6 +132,7 @@ export async function chatRefine(
   history: ChatMessage[],
   language: CodeLang,
   apiKey: string,
+  documentContext?: string,
 ): Promise<GenerateResult> {
   const res = await fetch(`${prefix}/api/chat-refine`, {
     method: "POST",
@@ -100,6 +144,7 @@ export async function chatRefine(
       history,
       language,
       api_key: apiKey,
+      document_context: documentContext ?? "",
     }),
   });
   if (!res.ok) throw new Error(await parseError(res));

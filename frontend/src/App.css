@@ -496,32 +496,79 @@ button:disabled {
   gap: 0.4rem;
 }
 
-/* 블록 설명 인라인 편집 */
-.block-desc-input {
-  width: 100%;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid transparent;
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-family: inherit;
-  padding: 0.25rem 0;
-  margin-top: 0.35rem;
-  border-radius: 0;
+/* ─── 구간별 업무 설명 뷰 ─── */
+.block-desc-view {
+  margin-top: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-height: 60px;
 }
 
-.block-desc-input:hover,
-.block-desc-input:focus {
-  background: rgba(255, 255, 255, 0.04);
-  border-bottom-color: var(--border);
-  outline: none;
+.block-desc-line {
+  margin: 0 0 0.3rem;
+  font-size: 0.82rem;
+  line-height: 1.65;
   color: var(--text);
 }
 
-.block-code {
-  width: 100%;
-  min-height: 140px;
+.block-desc-line.assumption {
+  color: color-mix(in srgb, var(--accent) 70%, var(--text));
+}
+
+.block-desc-empty {
+  margin: 0;
   font-size: 0.8rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.assumption-tag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 8px;
+  padding: 0 5px;
+  vertical-align: middle;
+}
+
+.block-assumption-badge {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 8px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
+/* 설명 직접 편집 textarea (접혀 있다가 펼치면 보임) */
+.block-desc-edit {
+  width: 100%;
+  margin-top: 0.4rem;
+  min-height: 80px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  padding: 0.5rem 0.6rem;
+  resize: vertical;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.block-desc-edit:hover,
+.block-desc-edit:focus {
+  border-color: var(--accent);
+  color: var(--text);
+  outline: none;
 }
 
 /* Mermaid SVG 노드 활성 강조 */
@@ -1204,6 +1251,148 @@ button:disabled {
   color: var(--border);
   font-size: 0.78rem;
   margin: 0;
+}
+
+/* ─── AI 분석 카드 ─── */
+.analysis-card {
+  margin-top: 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg2));
+  animation: analysis-in 0.3s ease;
+}
+
+@keyframes analysis-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.analysis-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg2));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.analysis-badge {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.analysis-card-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.analysis-summary {
+  padding: 10px 14px 6px;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--fg);
+  margin: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+
+.analysis-sections {
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analysis-section {
+  font-size: 0.8rem;
+}
+
+.analysis-section-title {
+  font-weight: 600;
+  color: var(--fg2);
+  margin-bottom: 4px;
+  font-size: 0.77rem;
+}
+
+.analysis-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+.analysis-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.analysis-tag {
+  background: color-mix(in srgb, var(--accent) 15%, var(--bg2));
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.analysis-generate-btn {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 10px 14px 14px;
+  padding: 10px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.analysis-generate-btn:hover:not(:disabled) { opacity: 0.85; }
+.analysis-generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 파일 드롭존 로딩 상태 */
+.file-dropzone.loading {
+  pointer-events: none;
+  border-color: var(--accent);
+  animation: dropzone-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes dropzone-pulse {
+  0%, 100% { border-color: var(--accent); }
+  50%       { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+}
+
+/* 채팅 패널 문서 컨텍스트 배지 */
+.chat-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-context-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg2));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 10px;
+  padding: 1px 7px;
+  margin-left: auto;
 }
 
 

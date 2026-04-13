@@ -71,9 +71,7 @@ if (-not (Test-Path "$IconDir\32x32.png")) {
 
 Write-Step "5/5 - Build Tauri app (with sidecar)"
 Set-Location "$Root\frontend"
-# Inject externalBin only for production build
-$ExtraCfg = '{"bundle":{"externalBin":["binaries/backend"]}}'
-npx tauri build --config $ExtraCfg
+npx tauri build --config src-tauri/tauri.build.conf.json
 if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] Tauri build failed" -ForegroundColor Red; exit 1 }
 
 Write-Host "`n============================================" -ForegroundColor Green

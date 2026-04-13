@@ -63,7 +63,34 @@ _EXTERNAL_SYSTEMS_KNOWLEDGE = """
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 파일 분석 전용 시스템 프롬프트 (훨씬 더 상세한 버전)
+# 사전 분석 (1단계) — 문서 학습만 수행, 다이어그램 생성 안 함
+# ─────────────────────────────────────────────────────────────────────────────
+def pre_analysis_system_prompt() -> str:
+    return """당신은 증권사·은행 SI/SM 경력 15년 이상의 시니어 개발자입니다.
+주어진 업무 문서를 읽고 핵심 내용을 구조적으로 파악하세요.
+반드시 유효한 JSON 한 덩어리만 출력하세요. 마크다운·코드펜스(```) 금지.
+
+{
+  "business_type": "업무 유형 (주문처리/이체/정산/조회/배치/인증/기타 중 가장 적합한 것 하나)",
+  "summary": "업무 전체 요약 (3~5문장, 한국어, 핵심 처리 흐름과 목적 포함)",
+  "key_flows": ["주요 처리 단계 목록 (5~8개, 동사+목적어 형식)"],
+  "entities": ["핵심 도메인 객체/엔티티 (계좌, 주문, 잔고, 종목 등)"],
+  "external_systems": ["연계 외부 시스템 명칭 (KRX, KSD, FEP, 금결원, SWIFT 등, 없으면 빈 배열)"],
+  "business_rules": ["핵심 비즈니스 규칙·제약 조건 (한도 검증, 시간대 검증 등, 3~6개)"],
+  "exception_cases": ["주요 예외·오류 시나리오 (타임아웃, 잔고부족, 권한오류 등, 3~6개)"]
+}"""
+
+
+def build_pre_analysis_user(doc_text: str) -> str:
+    max_chars = 8000
+    truncated = doc_text[:max_chars]
+    if len(doc_text) > max_chars:
+        truncated += f"\n\n... (이하 {len(doc_text) - max_chars}자 생략)"
+    return f"## 분석 대상 문서\n\n{truncated}\n\n위 문서의 업무 내용을 분석하여 JSON으로만 응답하세요."
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 파일 분석 전용 시스템 프롬프트 (2단계 — 사전 분석 컨텍스트 활용)
 # ─────────────────────────────────────────────────────────────────────────────
 def file_analysis_system_prompt(lang: str) -> str:
     L = lang_label(lang)
@@ -132,11 +159,19 @@ def file_analysis_system_prompt(lang: str) -> str:
 - JSON 문자열 내 줄바꿈은 \\n으로 이스케이프"""
 
 
-def build_file_analysis_user(doc_text: str, lang: str) -> str:
+def build_file_analysis_user(doc_text: str, lang: str, pre_analysis: dict | None = None) -> str:
+    import json as _json
     L = lang_label(lang)
+    context_section = ""
+    if pre_analysis:
+        context_section = (
+            "\n\n## 사전 분석 결과 (1단계에서 이미 파악한 내용 — 다이어그램 설계 시 최대한 반영)\n"
+            + _json.dumps(pre_analysis, ensure_ascii=False, indent=2)
+        )
     return (
         "## 분석 대상 문서\n\n"
         + doc_text
+        + context_section
         + "\n\n---\n"
         "## 지시사항\n\n"
         "위 문서를 분석하여 다음을 수행하세요:\n\n"
@@ -259,16 +294,25 @@ def build_chat_refine_user(
     current_mermaid: str,
     current_blocks: list,
     history: list,
+    document_context: str = "",
 ) -> str:
+    result = ""
+    if document_context:
+        result = (
+            "## 원본 문서 분석 컨텍스트 (항상 이 내용을 기반으로 수정)\n"
+            + document_context
+            + "\n\n"
+        )
+
     history_text = ""
     if history:
         lines = []
-        for m in history[-6:]:  # 최근 6개만
+        for m in history[-6:]:
             role = "사용자" if m.get("role") == "user" else "AI"
             lines.append(f"{role}: {m.get('content', '')[:300]}")
         history_text = "\n".join(lines) + "\n\n"
 
-    return (
+    result += (
         history_text
         + "현재 Mermaid 다이어그램:\n"
         + (current_mermaid or "(없음)")
@@ -277,3 +321,4 @@ def build_chat_refine_user(
         + "\n\n사용자 요청: "
         + question
     )
+    return result

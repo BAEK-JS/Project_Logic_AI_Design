@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "./api";
-import type { ChatMessage } from "./api";
+import type { ChatMessage, FileAnalysisResult } from "./api";
 import type { CodeLang, LogicBlock } from "./types";
 import type { Node, Edge } from "@xyflow/react";
 import { DiagramEditor, type DiagramHandle } from "./DiagramEditor";
@@ -29,38 +29,115 @@ function normalizeBlocks(blocks: LogicBlock[]): LogicBlock[] {
   }));
 }
 
-function codePlaceholder(lang: CodeLang) {
-  if (lang === "c") return "/* 이 구간 예시 코드 (C) */";
-  if (lang === "python") return "# 이 구간 예시 코드 (Python)";
-  return "// 이 구간 예시 코드 (Java)";
-}
 
 /* ─── BlockCard ─── */
 interface BlockCardProps {
-  block: LogicBlock; index: number; active: boolean; lang: CodeLang;
+  block: LogicBlock; index: number; active: boolean;
   detailsRef: (el: HTMLDetailsElement | null) => void;
   onChange: (field: "title" | "description" | "code", value: string) => void;
   onDelete: () => void;
 }
-function BlockCard({ block, index, active, lang, detailsRef, onChange, onDelete }: BlockCardProps) {
+function BlockCard({ block, index, active, detailsRef, onChange, onDelete }: BlockCardProps) {
+  const lines = block.description.split("\n");
+  const hasAssumption = block.description.includes("[assumption]");
   return (
     <details ref={detailsRef} className={`block-card${active ? " active" : ""}`} open={index === 0} data-block-id={block.id}>
       <summary>
         <div className="block-summary-left">
           <input className="block-title-input" value={block.title}
-            onChange={(e) => onChange("title", e.target.value)} onClick={(e) => e.stopPropagation()} placeholder="블록 제목" />
+            onChange={(e) => onChange("title", e.target.value)} onClick={(e) => e.stopPropagation()} placeholder="구간 제목" />
           <span className="block-id">{block.id}</span>
+          {hasAssumption && <span className="block-assumption-badge">추정</span>}
         </div>
         <button className="block-delete" type="button" title="블록 삭제"
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}>✕</button>
       </summary>
       <div className="block-body">
-        <input className="block-desc-input" value={block.description}
-          onChange={(e) => onChange("description", e.target.value)} placeholder="이 구간 설명 (선택)" />
-        <textarea className="block-code" placeholder={codePlaceholder(lang)}
-          value={block.code} onChange={(e) => onChange("code", e.target.value)} />
+        <div className="block-desc-view">
+          {lines.map((line, i) => {
+            const isAssumptionLine = line.includes("[assumption]");
+            return (
+              <p key={i} className={`block-desc-line${isAssumptionLine ? " assumption" : ""}`}>
+                {line.replace("[assumption]", "").trim() || <br />}
+                {isAssumptionLine && <span className="assumption-tag">[추정]</span>}
+              </p>
+            );
+          })}
+          {!block.description && (
+            <p className="block-desc-empty">설명이 없습니다.</p>
+          )}
+        </div>
+        <textarea
+          className="block-desc-edit"
+          value={block.description}
+          onChange={(e) => onChange("description", e.target.value)}
+          placeholder="이 구간의 업무 설명을 입력하세요"
+          rows={4}
+        />
       </div>
     </details>
+  );
+}
+
+/* ─── AnalysisCard ─── */
+interface AnalysisCardProps {
+  analysis: FileAnalysisResult;
+  onGenerate: () => void;
+  loading: boolean;
+}
+function AnalysisCard({ analysis, onGenerate, loading }: AnalysisCardProps) {
+  return (
+    <div className="analysis-card">
+      <div className="analysis-card-header">
+        <span className="analysis-badge">{analysis.business_type || "분석 완료"}</span>
+        <span className="analysis-card-title">AI 문서 학습 완료</span>
+      </div>
+      <p className="analysis-summary">{analysis.summary}</p>
+      <div className="analysis-sections">
+        {analysis.key_flows?.length > 0 && (
+          <div className="analysis-section">
+            <div className="analysis-section-title">🔄 주요 처리 흐름</div>
+            <ol className="analysis-list">
+              {analysis.key_flows.map((f, i) => <li key={i}>{f}</li>)}
+            </ol>
+          </div>
+        )}
+        {analysis.external_systems?.length > 0 && (
+          <div className="analysis-section">
+            <div className="analysis-section-title">🏢 연계 외부 시스템</div>
+            <div className="analysis-tags">
+              {analysis.external_systems.map((s, i) => (
+                <span key={i} className="analysis-tag">{s}</span>
+              ))}
+            </div>
+          </div>
+        )}
+        {analysis.business_rules?.length > 0 && (
+          <div className="analysis-section">
+            <div className="analysis-section-title">📋 비즈니스 규칙</div>
+            <ul className="analysis-list">
+              {analysis.business_rules.map((r, i) => <li key={i}>{r}</li>)}
+            </ul>
+          </div>
+        )}
+        {analysis.exception_cases?.length > 0 && (
+          <div className="analysis-section">
+            <div className="analysis-section-title">⚠️ 예외 케이스</div>
+            <ul className="analysis-list">
+              {analysis.exception_cases.map((ex, i) => <li key={i}>{ex}</li>)}
+            </ul>
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        className="analysis-generate-btn"
+        onClick={onGenerate}
+        disabled={loading}
+      >
+        {loading ? "다이어그램 생성 중…" : "이 분석으로 다이어그램 생성 →"}
+      </button>
+    </div>
   );
 }
 
@@ -173,7 +250,9 @@ export default function App() {
   /* 파일 업로드 */
   const [uploadedFilename, setUploadedFilename] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
-  const [loadingExtract, setLoadingExtract] = useState(false);
+  const [fileAnalysis, setFileAnalysis] = useState<FileAnalysisResult | null>(null);
+  const [loadingPreAnalyze, setLoadingPreAnalyze] = useState(false);
+  const [documentContext, setDocumentContext] = useState("");
 
   /* 다이어그램 */
   const [rfInitNodes, setRfInitNodes] = useState<Node[]>([]);
@@ -271,31 +350,65 @@ export default function App() {
   /* ── 파일 핸들러 ── */
   const onExtractFile = async (f: File | null | undefined) => {
     if (!f) return;
-    setLoadingExtract(true); setStatus(`"${f.name}" 텍스트 추출 중…`); setStatusType(""); setErrorDetail("");
+    setStatus(`"${f.name}" 텍스트 추출 중…`); setStatusType(""); setErrorDetail("");
     try {
       const { text, filename } = await api.extractTextFromFile(f);
       setRequirements(text); setUploadedFilename(filename);
       setOk(`"${filename}" 추출 완료`);
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
-    finally { setLoadingExtract(false); }
   };
 
-  const onAnalyzeFile = async (f: File | null | undefined) => {
+  const onUploadForPreAnalysis = async (f: File | null | undefined) => {
     if (!f) return;
     if (needApiKey()) return;
-    setLoadingGen(true); setStatus(`"${f.name}" 분석 중…`); setStatusType(""); setErrorDetail("");
+    setFileAnalysis(null);
+    setDocumentContext("");
+    setLoadingPreAnalyze(true);
+    setStatus(`"${f.name}" AI 학습 중…`);
+    setStatusType(""); setErrorDetail("");
     try {
-      const data = await api.analyzeFile(f, lang, apiKey);
-      if (data.extracted_text) setRequirements(data.extracted_text);
-      setUploadedFilename(f.name); setChatMessages([]);
-      applyResult(data, `"${f.name}" 분석 완료`);
+      const result = await api.preAnalyzeFile(f, apiKey);
+      setFileAnalysis(result);
+      setUploadedFilename(f.name);
+      if (result.extracted_text) setRequirements(result.extracted_text);
+      setOk(`"${f.name}" 학습 완료 — 아래 분석 결과를 확인하고 다이어그램을 생성하세요`);
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setLoadingPreAnalyze(false); }
+  };
+
+  const onGenerateFromAnalysis = async () => {
+    if (!fileAnalysis) return;
+    if (needApiKey()) return;
+    setLoadingGen(true); setStatus("분석 결과로 다이어그램 생성 중…"); setStatusType(""); setErrorDetail("");
+    try {
+      const data = await api.generateFromAnalysis(
+        fileAnalysis.extracted_text || requirements,
+        fileAnalysis,
+        lang,
+        apiKey,
+      );
+      setChatMessages([]);
+      setDocumentContext(JSON.stringify({
+        business_type: fileAnalysis.business_type,
+        summary: fileAnalysis.summary,
+        key_flows: fileAnalysis.key_flows,
+        external_systems: fileAnalysis.external_systems,
+        business_rules: fileAnalysis.business_rules,
+        exception_cases: fileAnalysis.exception_cases,
+      }));
+      applyResult(data, "다이어그램 생성 완료");
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setLoadingGen(false); }
   };
 
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault(); setIsDragOver(false);
-    onExtractFile(e.dataTransfer.files[0]);
+    if (inputMode === "file") {
+      onUploadForPreAnalysis(e.dataTransfer.files[0]);
+    } else {
+      onExtractFile(e.dataTransfer.files[0]);
+    }
   };
 
   /* ── AI 생성 ── */
@@ -308,6 +421,7 @@ export default function App() {
       const data = await api.generateDiagram(q, lang, apiKey);
       if (inputMode === "direct") setRequirements(q);
       setChatMessages([]);
+      setDocumentContext("");
       applyResult(data);
     } catch (e) { const m = e instanceof Error ? e.message : String(e); setErr(m, m); }
     finally { setLoadingGen(false); }
@@ -322,7 +436,7 @@ export default function App() {
     setChatMessages(newMsgs); setChatInput("");
     setLoadingChat(true); setStatus("다이어그램 수정 중…"); setStatusType("");
     try {
-      const data = await api.chatRefine(q, currentMermaid, blocks, chatMessages, lang, apiKey);
+      const data = await api.chatRefine(q, currentMermaid, blocks, chatMessages, lang, apiKey, documentContext || undefined);
       setChatMessages((prev) => [...prev, { role: "assistant", content: data.summary ?? "업데이트했습니다." }]);
       applyResult(data, data.summary ?? "다이어그램 업데이트 완료");
     } catch (e) {
@@ -481,39 +595,57 @@ export default function App() {
             {/* ── 파일 업로드 패널 ── */}
             {inputMode === "file" && (
               <div className="input-panel">
+                {/* 1단계: 파일 업로드 → AI 학습 */}
                 <div
-                  className={`file-dropzone${isDragOver ? " drag-over" : ""}`}
+                  className={`file-dropzone${isDragOver ? " drag-over" : ""}${loadingPreAnalyze ? " loading" : ""}`}
                   onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
                   onDragLeave={() => setIsDragOver(false)}
                   onDrop={handleDrop}
-                  onClick={() => analyzeFileRef.current?.click()}
+                  onClick={() => !loadingPreAnalyze && analyzeFileRef.current?.click()}
                 >
-                  <input ref={analyzeFileRef} type="file" accept={ACCEPT_EXTS} hidden onChange={(e) => onExtractFile(e.target.files?.[0])} />
-                  <span className="file-dropzone-icon">📄</span>
-                  <span className="file-dropzone-text">
-                    {loadingExtract ? "텍스트 추출 중…" : uploadedFilename ? `✓ ${uploadedFilename}` : "파일을 드래그하거나 클릭해서 업로드"}
+                  <input
+                    ref={analyzeFileRef}
+                    type="file"
+                    accept={ACCEPT_EXTS}
+                    hidden
+                    onChange={(e) => onUploadForPreAnalysis(e.target.files?.[0])}
+                  />
+                  <span className="file-dropzone-icon">
+                    {loadingPreAnalyze ? "🔍" : uploadedFilename ? "✅" : "📄"}
                   </span>
-                  <span className="file-dropzone-hint">txt · md · csv · pdf · docx · xlsx</span>
+                  <span className="file-dropzone-text">
+                    {loadingPreAnalyze
+                      ? "AI가 문서를 학습하고 있습니다…"
+                      : uploadedFilename
+                        ? uploadedFilename
+                        : "파일을 드래그하거나 클릭해서 업로드"}
+                  </span>
+                  <span className="file-dropzone-hint">
+                    {loadingPreAnalyze
+                      ? "업무 유형 · 흐름 · 외부 시스템 · 규칙 · 예외 파악 중"
+                      : "txt · md · csv · pdf · docx · xlsx"}
+                  </span>
                 </div>
-                <div className="file-btn-row">
-                  <button type="button" className="secondary" disabled={loadingExtract || loadingGen}
-                    onClick={() => analyzeFileRef.current?.click()}>
-                    {loadingExtract ? "추출 중…" : "파일 → 요건만 채우기"}
+
+                {/* 2단계: 분석 결과 카드 */}
+                {fileAnalysis && !loadingPreAnalyze && (
+                  <AnalysisCard
+                    analysis={fileAnalysis}
+                    onGenerate={onGenerateFromAnalysis}
+                    loading={loadingGen}
+                  />
+                )}
+
+                {/* 다른 파일 업로드 버튼 */}
+                {uploadedFilename && !loadingPreAnalyze && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    style={{ width: "100%", marginTop: 4 }}
+                    onClick={() => analyzeFileRef.current?.click()}
+                  >
+                    다른 파일 업로드
                   </button>
-                  <button type="button" disabled={loadingGen || loadingExtract}
-                    onClick={() => { const i = document.createElement("input"); i.type = "file"; i.accept = ACCEPT_EXTS; i.onchange = () => onAnalyzeFile(i.files?.[0]); i.click(); }}>
-                    {loadingGen ? "생성 중…" : "파일 → 다이어그램 바로 생성"}
-                  </button>
-                </div>
-                {requirements && (
-                  <>
-                    <textarea className="req" style={{ minHeight: 120 }} value={requirements}
-                      onChange={(e) => setRequirements(e.target.value)}
-                      placeholder="추출된 내용 (편집 후 생성 가능)" />
-                    <button type="button" onClick={onGenerate} disabled={loadingGen} style={{ width: "100%" }}>
-                      {loadingGen ? "생성 중…" : "추출된 내용으로 다이어그램 생성"}
-                    </button>
-                  </>
                 )}
               </div>
             )}
@@ -549,7 +681,7 @@ export default function App() {
               className="btn-code-toggle"
               onClick={() => setCodeVisible((v) => !v)}
             >
-              {codeVisible ? "◀ 코드 패널 닫기" : "코드 패널 열기 ▶"}
+              {codeVisible ? "◀ 설명 패널 닫기" : "설명 패널 열기 ▶"}
             </button>
           </div>
           <div className="pad diagram-pad">
@@ -581,7 +713,12 @@ export default function App() {
             {/* 채팅 패널 */}
             {diagramHasContent && (
               <div className="chat-panel">
-                <div className="chat-panel-head">💬 다이어그램 이어서 수정 · 추가 질문</div>
+                <div className="chat-panel-head">
+                  💬 다이어그램 이어서 수정 · 추가 질문
+                  {documentContext && (
+                    <span className="chat-context-badge">📎 문서 컨텍스트 활성</span>
+                  )}
+                </div>
                 <div className="chat-messages">
                   {chatMessages.length === 0 && (
                     <div className="chat-empty">
@@ -618,32 +755,32 @@ export default function App() {
           </div>
         </section>
 
-        {/* ── 3. 소스코드 ── */}
+        {/* ── 3. 구간별 업무 설명 ── */}
         <section className={`col${codeVisible ? "" : " col-code-hidden"}`}>
           <div className="col-head">
-            <span>3. 구간별 소스코드</span>
-            <span className="code-block-count">{blocks.length}개</span>
+            <span>3. 구간별 업무 설명</span>
+            <span className="code-block-count">{blocks.length}개 구간</span>
           </div>
           <div className="code-panel-layout">
             <p className="hint code-hint">
-              블록 id = Mermaid 노드 id · 제목·설명·코드 직접 편집 가능
+              노드 클릭 시 해당 구간으로 이동 · 설명은 직접 편집 가능 · <span style={{color:"var(--accent)"}}>추정</span> 태그는 AI가 가정한 내용
             </p>
             <div className="blocks">
               {blocks.map((b, i) => (
                 <BlockCard key={b.id + "-" + i} block={b} index={i}
-                  active={activeBlockId === b.id} lang={lang}
+                  active={activeBlockId === b.id}
                   detailsRef={setBlockRef(b.id)}
                   onChange={(field, value) => updateBlock(i, field, value)}
                   onDelete={() => deleteBlock(i)}
                 />
               ))}
               {blocks.length === 0 && (
-                <div className="blocks-empty">블록이 없습니다.<br />AI 생성 또는 직접 추가하세요.</div>
+                <div className="blocks-empty">구간이 없습니다.<br />AI로 다이어그램을 생성하면 자동으로 채워집니다.</div>
               )}
             </div>
             <div className="code-panel-footer">
               <button type="button" className="secondary" onClick={addEmptyBlock}>
-                + 빈 블록 추가
+                + 구간 추가
               </button>
             </div>
           </div>

@@ -8,7 +8,7 @@ import json
 import re
 from typing import Any, Literal
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from openai import APIError, OpenAI
 from pydantic import BaseModel
@@ -17,6 +17,8 @@ from prompts import (
     build_clipboard_prompt,
     default_system_prompt,
     build_user_content,
+    pre_analysis_system_prompt,
+    build_pre_analysis_user,
     file_analysis_system_prompt,
     build_file_analysis_user,
     fill_codes_system_user,
@@ -207,7 +209,7 @@ def _extract_text_from_file(filename: str, content: bytes) -> str:
 
 
 @app.post("/api/extract-text")
-async def extract_text(file: UploadFile = File(...)) -> dict:
+async def extract_text(file: UploadFile = File(...)) -> dict:  # noqa: no form fields
     """파일을 업로드하면 텍스트를 추출해서 반환합니다."""
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
@@ -218,11 +220,90 @@ async def extract_text(file: UploadFile = File(...)) -> dict:
     return {"text": text, "filename": file.filename, "size": len(content)}
 
 
+@app.post("/api/pre-analyze")
+async def pre_analyze(
+    file: UploadFile = File(...),
+    api_key: str = Form(default=""),
+) -> dict:
+    """1단계: 파일을 AI가 학습 — 업무 유형, 흐름, 외부 시스템, 규칙, 예외를 구조화해서 반환합니다."""
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="파일 크기가 10MB를 초과합니다.")
+    text = _extract_text_from_file(file.filename or "upload.txt", content)
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="파일에서 텍스트를 추출할 수 없습니다.")
+
+    client = _client(api_key)
+    system = pre_analysis_system_prompt()
+    user = build_pre_analysis_user(text)
+    try:
+        r = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.1,
+            max_tokens=1500,
+        )
+    except APIError as e:
+        raise _http_from_openai(e)
+    raw = (r.choices[0].message.content or "").strip()
+    if not raw:
+        raise HTTPException(status_code=502, detail="OpenAI 응답 본문이 비었습니다.")
+    try:
+        s = raw.strip()
+        if s.startswith("```"):
+            s = re.sub(r"^```(?:json)?\s*", "", s, flags=re.I)
+            s = re.sub(r"\s*```$", "", s)
+        result = json.loads(s.strip())
+        result["extracted_text"] = text[:3000]
+        return result
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(status_code=502, detail=f"JSON 파싱 실패: {e}. 원문: {raw[:300]}")
+
+
+class GenerateFromAnalysisBody(BaseModel):
+    extracted_text: str
+    pre_analysis: dict = {}
+    language: Literal["c", "java", "python"] = "java"
+    api_key: str
+
+
+@app.post("/api/generate-from-analysis")
+def generate_from_analysis(body: GenerateFromAnalysisBody) -> dict:
+    """2단계: 사전 분석 결과를 컨텍스트로 활용해 다이어그램을 생성합니다."""
+    if not body.extracted_text.strip():
+        raise HTTPException(status_code=400, detail="extracted_text가 비었습니다.")
+    client = _client(body.api_key)
+    system = file_analysis_system_prompt(body.language)
+    user = build_file_analysis_user(body.extracted_text, body.language, body.pre_analysis or None)
+    try:
+        r = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.15,
+            max_tokens=4096,
+        )
+    except APIError as e:
+        raise _http_from_openai(e)
+    raw = (r.choices[0].message.content or "").strip()
+    if not raw:
+        raise HTTPException(status_code=502, detail="OpenAI 응답 본문이 비었습니다.")
+    try:
+        return _parse_ai_json(raw)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(status_code=502, detail=f"JSON 파싱 실패: {e}. 원문 일부: {raw[:500]}")
+
+
 @app.post("/api/analyze-file")
 async def analyze_file(
     file: UploadFile = File(...),
-    language: str = "java",
-    api_key: str = "",
+    language: str = Form(default="java"),
+    api_key: str = Form(default=""),
 ) -> dict:
     """파일 업로드 → 텍스트 추출 → OpenAI로 다이어그램 생성까지 한 번에 처리합니다."""
     content = await file.read()
@@ -276,6 +357,7 @@ class ChatRefineBody(BaseModel):
     current_mermaid: str = ""
     current_blocks: list[ChatBlockMeta] = []
     history: list[ChatMessage] = []
+    document_context: str = ""
     language: Literal["c", "java", "python"] = "java"
     api_key: str
 
@@ -291,6 +373,7 @@ def chat_refine(body: ChatRefineBody) -> dict:
         body.current_mermaid,
         [b.model_dump() for b in body.current_blocks],
         [m.model_dump() for m in body.history],
+        body.document_context,
     )
     try:
         r = client.chat.completions.create(
