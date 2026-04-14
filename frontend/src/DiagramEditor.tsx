@@ -21,6 +21,8 @@ import { reLayoutNodes } from './mermaidParser';
 export interface DiagramHandle {
   addNode: (id: string, label: string) => void;
   getMermaid: () => string;
+  /** Before PDF/screenshot: zoom so all nodes fit in the viewport. */
+  fitDiagramForExport: () => Promise<void>;
 }
 
 /* ─────────────────────────────────────────
@@ -140,6 +142,11 @@ function DiagramEditorInner({
       },
       getMermaid: () =>
         nodesToMermaid(rfRef.current.getNodes() as Node[], rfRef.current.getEdges() as Edge[]),
+      fitDiagramForExport: () =>
+        new Promise<void>((resolve) => {
+          rfRef.current.fitView({ padding: 0.16, duration: 320, minZoom: 0.03, maxZoom: 1.85 });
+          window.setTimeout(resolve, 380);
+        }),
     };
   }, [handleRef]);
 
@@ -172,7 +179,7 @@ function DiagramEditorInner({
         <button type="button" className="secondary" onClick={handleAutoLayout}>자동 정렬</button>
         <span className="rf-hint">더블클릭: 이름편집 · Delete: 삭제 · 연결점 드래그: 엣지 추가</span>
       </div>
-      <div className="rf-canvas-wrap" ref={canvasRef}>
+      <div className="rf-canvas-wrap" ref={canvasRef} data-diagram-export-root>
         <ReactFlow
           defaultNodes={defaultNodes}
           defaultEdges={defaultEdges}

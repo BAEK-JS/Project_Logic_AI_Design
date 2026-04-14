@@ -1188,6 +1188,21 @@ button:disabled {
   overflow: hidden;
 }
 
+/* ─── PDF 저장 버튼 ─── */
+.btn-pdf {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-pdf:hover:not(:disabled) { opacity: 0.85; }
+.btn-pdf:disabled { opacity: 0.4; cursor: not-allowed; }
+
 /* ─── Tauri 스플래시 / 백엔드 로딩 ─── */
 .tauri-splash {
   position: fixed;

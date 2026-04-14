@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import json
+
 Lang = str  # "c" | "java" | "python"
 
 

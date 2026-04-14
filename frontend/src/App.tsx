@@ -475,6 +475,200 @@ export default function App() {
     finally { setLoadingFill(false); }
   };
 
+  const onExportPDF = async () => {
+    if (!blocks.length && rfInitNodes.length === 0) {
+      setErr("내보낼 다이어그램이 없습니다. 먼저 다이어그램을 생성하세요.");
+      return;
+    }
+    setStatus("PDF 생성 중…"); setStatusType(""); setErrorDetail("");
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const today = new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
+      const docTitle = requirements.trim().slice(0, 120) || "\uC5C5\uBB34 \uB85C\uC9C1 \uB2E4\uC774\uC5B4\uADF8\uB7FC";
+
+      const escapeHtml = (t: string) =>
+        t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+      await diagramRef.current?.fitDiagramForExport();
+
+      let diagramDataUrl = "";
+      const diagramEl = document.querySelector("[data-diagram-export-root]") as HTMLElement | null;
+      if (diagramEl) {
+        const dc = await html2canvas(diagramEl, {
+          backgroundColor: "#1a2332",
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          allowTaint: true,
+          ignoreElements: (node) => {
+            if (!(node instanceof HTMLElement)) return false;
+            return (
+              node.classList.contains("react-flow__minimap") ||
+              node.classList.contains("react-flow__controls")
+            );
+          },
+        });
+        diagramDataUrl = dc.toDataURL("image/png");
+      }
+
+      const blockHtml = blocks
+        .map((b, i) => {
+          const title = escapeHtml(b.title || "(제목 없음)");
+          const id = escapeHtml(b.id);
+          const raw = (b.description || "").replace(/\[assumption\]/g, "[\uCD94\uC815]");
+          const descHtml = escapeHtml(raw).replace(/\r\n/g, "\n").split("\n").join("<br/>");
+          return `
+            <div class="pdf-block">
+              <div class="pdf-block-hd">
+                <span class="pdf-num">${i + 1}</span>
+                <span class="pdf-b-title">${title}</span>
+                <span class="pdf-b-id">${id}</span>
+              </div>
+              <div class="pdf-block-body">${descHtml || '<span class="pdf-muted">설명 없음</span>'}</div>
+            </div>`;
+        })
+        .join("");
+
+      const wrap = document.createElement("div");
+      wrap.setAttribute("data-pdf-html-export", "1");
+      wrap.innerHTML = `
+        <style>
+          .pdf-root * { box-sizing: border-box; }
+          .pdf-root {
+            width: 720px;
+            padding: 28px 24px 32px;
+            background: #fff;
+            color: #1e293b;
+            font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
+            font-size: 13px;
+            line-height: 1.55;
+          }
+          .pdf-topbar {
+            background: linear-gradient(135deg, #0f1419 0%, #1a2332 100%);
+            margin: -28px -24px 20px;
+            padding: 18px 24px 16px;
+            border-bottom: 3px solid #3d8bfd;
+          }
+          .pdf-toprow { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+          .pdf-brand { color: #3d8bfd; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+          .pdf-sub { color: #94a3b8; font-size: 11px; margin-top: 6px; }
+          .pdf-date { color: #64748b; font-size: 11px; white-space: nowrap; padding-top: 4px; }
+          .pdf-doc-title {
+            font-size: 15px; font-weight: 700; color: #0f172a;
+            margin: 0 0 18px; padding: 14px 16px; background: #f1f5f9; border-radius: 8px;
+            border-left: 4px solid #3d8bfd;
+            line-height: 1.75;
+            letter-spacing: 0;
+            word-break: keep-all;
+            overflow-wrap: anywhere;
+            white-space: normal;
+            display: block;
+            width: 100%;
+          }
+          .pdf-h2 { color: #3d8bfd; font-size: 13px; font-weight: 700; margin: 22px 0 10px;
+            padding-bottom: 6px; border-bottom: 2px solid #3d8bfd; display: inline-block; }
+          .pdf-diagram {
+            display: block; width: 100%; border-radius: 8px; margin: 8px 0 8px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+          }
+          .pdf-block { margin-bottom: 14px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+          .pdf-block-hd {
+            display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+            background: #1e293b; color: #f1f5f9;
+          }
+          .pdf-num {
+            flex-shrink: 0; min-width: 24px; height: 24px; border-radius: 50%; background: #3d8bfd; color: #fff;
+            font-size: 11px; font-weight: 800; text-align: center; line-height: 24px;
+          }
+          .pdf-b-title { flex: 1; font-weight: 700; font-size: 13px; }
+          .pdf-b-id { flex-shrink: 0; font-size: 11px; color: #94a3b8; font-family: ui-monospace, monospace; }
+          .pdf-block-body {
+            padding: 12px 14px; background: #f8fafc; color: #334155; font-size: 12.5px;
+            line-height: 1.7; letter-spacing: 0; word-break: keep-all; overflow-wrap: anywhere; white-space: normal;
+          }
+          .pdf-muted { color: #94a3b8; }
+        </style>
+        <div class="pdf-root">
+          <div class="pdf-topbar">
+            <div class="pdf-toprow">
+              <div>
+                <div class="pdf-brand">Logic Mapper</div>
+                <div class="pdf-sub">AI \uC5C5\uBB34 \uB85C\uC9C1 \uB2E4\uC774\uC5B4\uADF8\uB7FC \uB9AC\uD3EC\uD2B8</div>
+              </div>
+              <div class="pdf-date">${escapeHtml(today)}</div>
+            </div>
+          </div>
+          <div class="pdf-doc-title">${escapeHtml(docTitle).replace(/\r\n/g, "\n").split("\n").join("<br/>")}</div>
+          ${diagramDataUrl ? `<div class="pdf-h2">\u25CF \uB85C\uC9C1 \uB2E4\uC774\uC5B4\uADF8\uB7FC</div><img class="pdf-diagram" src="${diagramDataUrl}" alt="" crossorigin="anonymous" />` : ""}
+          ${blocks.length ? `<div class="pdf-h2">● 구간별 업무 설명</div>${blockHtml}` : ""}
+        </div>
+      `;
+
+      document.body.appendChild(wrap);
+      const root = wrap.querySelector(".pdf-root") as HTMLElement;
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      const fullCanvas = await html2canvas(root, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        allowTaint: true,
+      });
+      document.body.removeChild(wrap);
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const topM = 8;
+      const botM = 12;
+      const usableMm = pageH - topM - botM;
+      const imgW = pageW;
+      const imgH = (fullCanvas.height * imgW) / fullCanvas.width;
+
+      const addFooter = (pageIndex: number, total: number) => {
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7);
+        pdf.setTextColor(148, 163, 184);
+        pdf.text(`Logic Mapper · ${pageIndex} / ${total}`, pageW / 2, pageH - 5, { align: "center" });
+      };
+
+      if (imgH <= usableMm) {
+        const data = fullCanvas.toDataURL("image/png");
+        pdf.addImage(data, "PNG", 0, topM, imgW, imgH);
+        addFooter(1, 1);
+      } else {
+        const slicePx = Math.max(1, Math.floor((usableMm / imgH) * fullCanvas.height));
+        let yPx = 0;
+        const slices: HTMLCanvasElement[] = [];
+        while (yPx < fullCanvas.height) {
+          const h = Math.min(slicePx, fullCanvas.height - yPx);
+          const slice = document.createElement("canvas");
+          slice.width = fullCanvas.width;
+          slice.height = h;
+          slice.getContext("2d")?.drawImage(fullCanvas, 0, yPx, fullCanvas.width, h, 0, 0, fullCanvas.width, h);
+          slices.push(slice);
+          yPx += h;
+        }
+        const total = slices.length;
+        slices.forEach((slice, i) => {
+          if (i > 0) pdf.addPage();
+          const sliceMmH = (slice.height * imgW) / fullCanvas.width;
+          pdf.addImage(slice.toDataURL("image/png"), "PNG", 0, topM, imgW, sliceMmH);
+          addFooter(i + 1, total);
+        });
+      }
+
+      const filename = "logic-map-" + new Date().toISOString().slice(0, 10) + ".pdf";
+      pdf.save(filename);
+      setOk("PDF \uC800\uC7A5 \uC644\uB8CC (" + filename + ")");
+
+    } catch (e) {
+      setErr("PDF 생성 실패: " + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
   const onExport = () => {
     const mermaid = diagramRef.current?.getMermaid() ?? mermaidImportText;
     const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), exampleLanguage: lang, requirements, mermaid, blocks }, null, 2)], { type: "application/json" });
@@ -535,6 +729,7 @@ export default function App() {
         <div className="toolbar">
           <button type="button" className="secondary" onClick={onCopyPrompt}>프롬프트 복사</button>
           <button type="button" className="secondary" onClick={onExport}>JSON 내보내기</button>
+          <button type="button" className="btn-pdf" onClick={onExportPDF} disabled={!diagramHasContent}>📄 PDF 저장</button>
           <label className="secondary" style={{ padding: "0.45rem 0.9rem", borderRadius: 6, cursor: "pointer" }}>
             가져오기
             <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(ev) => onImportFile(ev.target.files?.[0] ?? null)} />
