@@ -10,9 +10,9 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from openai import APIError, OpenAI
 from pydantic import BaseModel
 
+from ai_client import complete_chat
 from prompts import (
     build_clipboard_prompt,
     default_system_prompt,
@@ -70,6 +70,9 @@ class GenerateBody(BaseModel):
     requirements: str
     language: Literal["c", "java", "python"] = "java"
     api_key: str
+    ai_provider: Literal["chatgpt", "gemini", "ds_playground"] = "chatgpt"
+    model: str = ""
+    base_url: str = ""
 
 
 class BlockMeta(BaseModel):
@@ -84,13 +87,9 @@ class FillCodesBody(BaseModel):
     blocks_meta: list[BlockMeta]
     language: Literal["c", "java", "python"] = "java"
     api_key: str
-
-
-def _client(api_key: str) -> OpenAI:
-    key = (api_key or "").strip()
-    if not key:
-        raise HTTPException(status_code=400, detail="api_key가 비었습니다.")
-    return OpenAI(api_key=key)
+    ai_provider: Literal["chatgpt", "gemini", "ds_playground"] = "chatgpt"
+    model: str = ""
+    base_url: str = ""
 
 
 @app.get("/api/health")
@@ -109,19 +108,17 @@ def generate(body: GenerateBody) -> dict:
     req = body.requirements.strip()
     if not req:
         raise HTTPException(status_code=400, detail="requirements가 비었습니다.")
-    client = _client(body.api_key)
     prompt = build_clipboard_prompt(req, body.language)
-    try:
-        r = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-        )
-    except APIError as e:
-        raise _http_from_openai(e)
-    raw = (r.choices[0].message.content or "").strip()
+    raw = complete_chat(
+        [{"role": "user", "content": prompt}],
+        ai_provider=body.ai_provider,
+        api_key=body.api_key,
+        model=body.model,
+        base_url=body.base_url,
+        temperature=0.2,
+    )
     if not raw:
-        raise HTTPException(status_code=502, detail="OpenAI 응답 본문이 비었습니다.")
+        raise HTTPException(status_code=502, detail="AI response body was empty.")
     try:
         return _parse_ai_json(raw)
     except (json.JSONDecodeError, ValueError) as e:
@@ -132,25 +129,23 @@ def generate(body: GenerateBody) -> dict:
 def fill_codes(body: FillCodesBody) -> dict:
     if not body.blocks_meta:
         raise HTTPException(status_code=400, detail="blocks_meta가 비었습니다.")
-    client = _client(body.api_key)
     meta = [m.model_dump() for m in body.blocks_meta]
     system, user = fill_codes_system_user(
         body.language, body.requirements, body.mermaid, meta
     )
-    try:
-        r = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=0.2,
-        )
-    except APIError as e:
-        raise _http_from_openai(e)
-    raw = (r.choices[0].message.content or "").strip()
+    raw = complete_chat(
+        [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        ai_provider=body.ai_provider,
+        api_key=body.api_key,
+        model=body.model,
+        base_url=body.base_url,
+        temperature=0.2,
+    )
     if not raw:
-        raise HTTPException(status_code=502, detail="OpenAI 응답 본문이 비었습니다.")
+        raise HTTPException(status_code=502, detail="AI response body was empty.")
     try:
         blocks = _parse_fill_blocks(raw)
     except (json.JSONDecodeError, ValueError) as e:
@@ -224,6 +219,9 @@ async def extract_text(file: UploadFile = File(...)) -> dict:  # noqa: no form f
 async def pre_analyze(
     file: UploadFile = File(...),
     api_key: str = Form(default=""),
+    ai_provider: str = Form(default="chatgpt"),
+    model: str = Form(default=""),
+    base_url: str = Form(default=""),
 ) -> dict:
     """1단계: 파일을 AI가 학습 — 업무 유형, 흐름, 외부 시스템, 규칙, 예외를 구조화해서 반환합니다."""
     content = await file.read()
@@ -233,24 +231,22 @@ async def pre_analyze(
     if not text.strip():
         raise HTTPException(status_code=422, detail="파일에서 텍스트를 추출할 수 없습니다.")
 
-    client = _client(api_key)
     system = pre_analysis_system_prompt()
     user = build_pre_analysis_user(text)
-    try:
-        r = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=0.1,
-            max_tokens=1500,
-        )
-    except APIError as e:
-        raise _http_from_openai(e)
-    raw = (r.choices[0].message.content or "").strip()
+    raw = complete_chat(
+        [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        ai_provider=ai_provider,
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+        temperature=0.1,
+        max_tokens=1500,
+    )
     if not raw:
-        raise HTTPException(status_code=502, detail="OpenAI 응답 본문이 비었습니다.")
+        raise HTTPException(status_code=502, detail="AI response body was empty.")
     try:
         s = raw.strip()
         if s.startswith("```"):
@@ -268,6 +264,9 @@ class GenerateFromAnalysisBody(BaseModel):
     pre_analysis: dict = {}
     language: Literal["c", "java", "python"] = "java"
     api_key: str
+    ai_provider: Literal["chatgpt", "gemini", "ds_playground"] = "chatgpt"
+    model: str = ""
+    base_url: str = ""
 
 
 @app.post("/api/generate-from-analysis")
@@ -275,24 +274,22 @@ def generate_from_analysis(body: GenerateFromAnalysisBody) -> dict:
     """2단계: 사전 분석 결과를 컨텍스트로 활용해 다이어그램을 생성합니다."""
     if not body.extracted_text.strip():
         raise HTTPException(status_code=400, detail="extracted_text가 비었습니다.")
-    client = _client(body.api_key)
     system = file_analysis_system_prompt(body.language)
     user = build_file_analysis_user(body.extracted_text, body.language, body.pre_analysis or None)
-    try:
-        r = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=0.15,
-            max_tokens=4096,
-        )
-    except APIError as e:
-        raise _http_from_openai(e)
-    raw = (r.choices[0].message.content or "").strip()
+    raw = complete_chat(
+        [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        ai_provider=body.ai_provider,
+        api_key=body.api_key,
+        model=body.model,
+        base_url=body.base_url,
+        temperature=0.15,
+        max_tokens=4096,
+    )
     if not raw:
-        raise HTTPException(status_code=502, detail="OpenAI 응답 본문이 비었습니다.")
+        raise HTTPException(status_code=502, detail="AI response body was empty.")
     try:
         return _parse_ai_json(raw)
     except (json.JSONDecodeError, ValueError) as e:
@@ -304,6 +301,9 @@ async def analyze_file(
     file: UploadFile = File(...),
     language: str = Form(default="java"),
     api_key: str = Form(default=""),
+    ai_provider: str = Form(default="chatgpt"),
+    model: str = Form(default=""),
+    base_url: str = Form(default=""),
 ) -> dict:
     """파일 업로드 → 텍스트 추출 → OpenAI로 다이어그램 생성까지 한 번에 처리합니다."""
     content = await file.read()
@@ -314,24 +314,22 @@ async def analyze_file(
         raise HTTPException(status_code=422, detail="파일에서 텍스트를 추출할 수 없습니다.")
 
     lang = language if language in ("c", "java", "python") else "java"
-    client = _client(api_key)
     system = file_analysis_system_prompt(lang)
     user = build_file_analysis_user(text, lang)
-    try:
-        r = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=0.15,
-            max_tokens=4096,
-        )
-    except APIError as e:
-        raise _http_from_openai(e)
-    raw = (r.choices[0].message.content or "").strip()
+    raw = complete_chat(
+        [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        ai_provider=ai_provider,
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+        temperature=0.15,
+        max_tokens=4096,
+    )
     if not raw:
-        raise HTTPException(status_code=502, detail="OpenAI 응답 본문이 비었습니다.")
+        raise HTTPException(status_code=502, detail="AI response body was empty.")
     try:
         result = _parse_ai_json(raw)
         result["extracted_text"] = text[:2000]
@@ -360,13 +358,15 @@ class ChatRefineBody(BaseModel):
     document_context: str = ""
     language: Literal["c", "java", "python"] = "java"
     api_key: str
+    ai_provider: Literal["chatgpt", "gemini", "ds_playground"] = "chatgpt"
+    model: str = ""
+    base_url: str = ""
 
 
 @app.post("/api/chat-refine")
 def chat_refine(body: ChatRefineBody) -> dict:
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="question이 비었습니다.")
-    client = _client(body.api_key)
     system = chat_refine_system_prompt(body.language)
     user = build_chat_refine_user(
         body.question,
@@ -375,39 +375,26 @@ def chat_refine(body: ChatRefineBody) -> dict:
         [m.model_dump() for m in body.history],
         body.document_context,
     )
-    try:
-        r = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=0.2,
-            max_tokens=4096,
-        )
-    except APIError as e:
-        raise _http_from_openai(e)
-    raw = (r.choices[0].message.content or "").strip()
+    raw = complete_chat(
+        [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        ai_provider=body.ai_provider,
+        api_key=body.api_key,
+        model=body.model,
+        base_url=body.base_url,
+        temperature=0.2,
+        max_tokens=4096,
+    )
     if not raw:
-        raise HTTPException(status_code=502, detail="OpenAI 응답 본문이 비었습니다.")
+        raise HTTPException(status_code=502, detail="AI response body was empty.")
     try:
         return _parse_ai_json(raw)
     except (json.JSONDecodeError, ValueError) as e:
         raise HTTPException(status_code=502, detail=f"JSON 파싱 실패: {e}. 원문: {raw[:500]}")
 
 
-def _http_from_openai(e: APIError) -> HTTPException:
-    msg = getattr(e, "message", None) or str(e)
-    code = getattr(e, "code", None)
-    typ = getattr(e, "type", None)
-    status = getattr(e, "status_code", None)
-    http = int(status) if status and 100 <= int(status) < 600 else 502
-    if http == 401 or http == 403:
-        http = 401
-    elif http >= 500:
-        http = 502
-    detail = {"message": msg, "type": typ, "code": code}
-    return HTTPException(status_code=http, detail=detail)
 
 
 # ─── Tauri 사이드카 / PyInstaller 진입점 ───────────────────────────────────────

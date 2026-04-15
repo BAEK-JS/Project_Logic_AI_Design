@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import * as api from "./api";
-import type { ChatMessage, FileAnalysisResult } from "./api";
+import type { AiProvider, AiSettings, ChatMessage, FileAnalysisResult } from "./api";
 import type { CodeLang, LogicBlock } from "./types";
 import type { Node, Edge } from "@xyflow/react";
 import { DiagramEditor, type DiagramHandle } from "./DiagramEditor";
@@ -8,6 +8,10 @@ import { parseMermaidToFlow } from "./mermaidParser";
 import { stubForBlock } from "./exampleCode";
 
 const ACCEPT_EXTS = ".txt,.md,.csv,.pdf,.docx,.xlsx,.log";
+
+function apiErr(e: unknown): string {
+  return api.formatApiNetworkError(e);
+}
 
 function randomId() {
   return "N" + Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -277,39 +281,220 @@ function AnalysisCard({ analysis, onGenerate, loading }: AnalysisCardProps) {
 }
 
 /* ─── SettingsModal ─── */
+const PROVIDER_ROWS: { id: AiProvider; title: string; urlHint: string }[] = [
+  { id: "chatgpt", title: "ChatGPT", urlHint: "비우면 OpenAI 공식 (https://api.openai.com/v1)" },
+  { id: "gemini", title: "Gemini (\uc81c\ubbf8\ub098\uc774)", urlHint: "비우면 Google Generative Language 기본 주소" },
+  { id: "ds_playground", title: "DS PlayGround", urlHint: "필수: OpenAI 호환 API 베이스 URL" },
+];
+
+const MODEL_PRESETS: Record<AiProvider, string[]> = {
+  chatgpt: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4.1", "o3-mini"],
+  gemini: ["gemini-2.0-flash", "gemini-2.5-flash-preview", "gemini-1.5-pro", "gemini-1.5-flash"],
+  ds_playground: [],
+};
+
 interface SettingsModalProps {
-  open: boolean; onClose: () => void;
-  apiKey: string; onApiKeyChange: (v: string) => void;
-  lang: CodeLang; onLangChange: (v: CodeLang) => void;
+  open: boolean;
+  onClose: () => void;
+  aiSettings: AiSettings;
+  onSave: (s: AiSettings) => void;
+  lang: CodeLang;
+  onLangChange: (v: CodeLang) => void;
 }
-function SettingsModal({ open, onClose, apiKey, onApiKeyChange, lang, onLangChange }: SettingsModalProps) {
+
+function SettingsModal({ open, onClose, aiSettings, onSave, lang, onLangChange }: SettingsModalProps) {
+  const [draft, setDraft] = useState<AiSettings>(() => structuredClone(aiSettings));
+  const [saveErr, setSaveErr] = useState("");
+  /** Hub: model chips only; non-null = full inputs for that provider. */
+  const [detailProvider, setDetailProvider] = useState<AiProvider | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setDraft(structuredClone(aiSettings));
+      setSaveErr("");
+      setDetailProvider(null);
+    }
+  }, [open, aiSettings]);
+
+  const patchProvider = (id: AiProvider, patch: Partial<api.ProviderFields>) => {
+    setDraft((d) => ({
+      ...d,
+      providers: { ...d.providers, [id]: { ...d.providers[id], ...patch } },
+    }));
+  };
+
+  const selectModelPreset = (id: AiProvider, model: string) => {
+    patchProvider(id, { model });
+    setDraft((d) => ({ ...d, activeProvider: id }));
+    setDetailProvider(id);
+  };
+
+  const openProviderDetail = (id: AiProvider) => {
+    setDetailProvider(id);
+  };
+
+  const handleSave = () => {
+    const err = api.validateAllProvidersSaved(draft);
+    if (err) {
+      setSaveErr(err);
+      return;
+    }
+    onSave(draft);
+  };
+
   if (!open) return null;
+
   return (
     <div className="settings-backdrop" onClick={onClose}>
-      <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-modal settings-modal-wide" onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
-          <span>⚙️ 설정</span>
-          <button type="button" className="settings-close" onClick={onClose}>✕</button>
+          <span>{"\u2699\ufe0f \uc124\uc815"}</span>
+          <button type="button" className="settings-close" onClick={onClose} aria-label={"\ub2eb\uae30"}>{"\u2715"}</button>
         </div>
-        <div className="settings-body">
+        <div className="settings-body settings-body-scroll">
           <div className="settings-field">
-            <label className="settings-label">OpenAI API 키</label>
-            <p className="settings-hint">입력하면 브라우저에 저장됩니다. 페이지를 닫아도 유지됩니다.</p>
-            <input
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="sk-..."
-              value={apiKey}
-              onChange={(e) => onApiKeyChange(e.target.value)}
-              style={{ width: "100%" }}
-            />
-            {apiKey && (
-              <p className="settings-saved">✓ API 키 저장됨 ({apiKey.slice(0, 7)}…)</p>
-            )}
+            <label className="settings-label">{"\uc0ac\uc6a9\ud560 AI \uc5d0\uc774\uc804\ud2b8"}</label>
+            <p className="settings-hint">
+              {detailProvider === null
+                ? "\uc544\ub798 \ubaa8\ub378\uc744 \uc120\ud0dd\ud558\uac70\ub098 \u201c\uc9c1\uc811 \uc785\ub825\u201d\ub97c \ub20c\ub7ec API \ubc0f \ubaa8\ub378\uc744 \uc124\uc815\ud569\ub2c8\ub2e4. \uc2e4\uc81c \ud638\ucd9c\uc5d0\ub294 \uc5ec\uae30\uc11c \uace0\ub978 \uc81c\uacf5\uc790\uac00 \uc0ac\uc6a9\ub429\ub2c8\ub2e4."
+                : "\uc2e4\uc81c \ud638\ucd9c \uc2dc \uc704\uc5d0\uc11c \uc120\ud0dd\ud55c \uc81c\uacf5\uc790 \uc124\uc815\uc774 \uc0ac\uc6a9\ub429\ub2c8\ub2e4."}
+            </p>
+            <div className="settings-provider-active-row">
+              {PROVIDER_ROWS.map(({ id, title }) => (
+                <label key={id} className={`settings-lang-btn${draft.activeProvider === id ? " active" : ""}`}>
+                  <input
+                    type="radio"
+                    name="active-ai-provider"
+                    hidden
+                    checked={draft.activeProvider === id}
+                    onChange={() => setDraft((d) => ({ ...d, activeProvider: id }))}
+                  />
+                  {title}
+                </label>
+              ))}
+            </div>
           </div>
+
+          {detailProvider !== null ? (
+            <div className="settings-provider-view-toolbar">
+              <button type="button" className="settings-show-all-providers" onClick={() => setDetailProvider(null)}>
+                {"\u2190 \ubaa8\ub378 \ubaa9\ub85d\uc73c\ub85c"}
+              </button>
+            </div>
+          ) : null}
+
+          {detailProvider === null
+            ? PROVIDER_ROWS.map(({ id, title }) => {
+                const row = draft.providers[id];
+                const presets = MODEL_PRESETS[id];
+                return (
+                  <div key={id} className="settings-provider-hub-block">
+                    <div className="settings-provider-hub-head">
+                      <span className="settings-provider-title">{title}</span>
+                      {draft.activeProvider === id ? (
+                        <span className="settings-provider-pill-active">{"\uc0ac\uc6a9 \uc911"}</span>
+                      ) : null}
+                    </div>
+                    {presets.length > 0 ? (
+                      <>
+                        <label className="settings-sublabel">{"\ubaa8\ub378 \ubaa9\ub85d"}</label>
+                        <div className="settings-model-presets" role="list">
+                          {presets.map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              role="listitem"
+                              className={`settings-model-chip${row.model === m ? " active" : ""}`}
+                              onClick={() => selectModelPreset(id, m)}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="settings-hint settings-hint-tight settings-model-no-presets">
+                        {"\uc0ac\uc6a9 \ubaa8\ub378\u00b7API \ubc84\uc804\uc740 \uc544\ub798 \ubc84\ud2bc\uc73c\ub85c \uc9c1\uc811 \uc785\ub825\ud569\ub2c8\ub2e4."}
+                      </p>
+                    )}
+                    <div className="settings-provider-hub-actions">
+                      <button type="button" className="settings-open-detail" onClick={() => openProviderDetail(id)}>
+                        {presets.length > 0
+                          ? "\uc9c1\uc811 \uc785\ub825 \ubc0f API \uc124\uc815"
+                          : "API\u00b7\ubaa8\ub378 \uc124\uc815 \uc785\ub825"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            : (() => {
+                const id = detailProvider;
+                const meta = PROVIDER_ROWS.find((r) => r.id === id)!;
+                const { title, urlHint } = meta;
+                const row = draft.providers[id];
+                const presets = MODEL_PRESETS[id];
+                return (
+                  <div className="settings-provider-block settings-provider-block-detail">
+                    <div className="settings-provider-title">{title}</div>
+                    {presets.length > 0 ? (
+                      <>
+                        <label className="settings-sublabel">{"\ubaa8\ub378 \ubaa9\ub85d"}</label>
+                        <div className="settings-model-presets" role="list">
+                          {presets.map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              role="listitem"
+                              className={`settings-model-chip${row.model === m ? " active" : ""}`}
+                              onClick={() => selectModelPreset(id, m)}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : null}
+                    <label className="settings-sublabel">{"API \ud0a4"}</label>
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="settings-input-full"
+                      placeholder={"API \ud0a4"}
+                      value={row.apiKey}
+                      onChange={(e) => patchProvider(id, { apiKey: e.target.value })}
+                    />
+                    <label className="settings-sublabel">{"\uc0ac\uc6a9 \ubaa8\ub378"}</label>
+                    <input
+                      type="text"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="settings-input-full"
+                      placeholder={id === "gemini" ? "\uc608: gemini-2.0-flash" : id === "chatgpt" ? "\uc608: gpt-4o" : "\ubaa8\ub378 ID"}
+                      value={row.model}
+                      onChange={(e) => patchProvider(id, { model: e.target.value })}
+                    />
+                    <label className="settings-sublabel">{"API \ubca0\uc774\uc2a4 URL"}</label>
+                    <input
+                      type="url"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="settings-input-full"
+                      placeholder={urlHint}
+                      value={row.baseUrl}
+                      onChange={(e) => patchProvider(id, { baseUrl: e.target.value })}
+                    />
+                  </div>
+                );
+              })()}
+
+          {saveErr ? <p className="settings-save-err">{saveErr}</p> : null}
+          <p className="settings-hint settings-hint-tight">
+            {"\ucd5c\uc18c \ud55c \uc81c\uacf5\uc790\uc5d0\ub9cc API \ud0a4\u00b7\ubaa8\ub378(DS\ub294 \ubca0\uc774\uc2a4 URL \ud3ec\ud568)\uc744 \uc785\ub825\ud558\uba74 \uc800\uc7a5\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4. \uc2e4\uc81c \ud638\ucd9c\uc5d0\ub294 \uc704\uc5d0\uc11c \uc120\ud0dd\ud55c \uc81c\uacf5\uc790\uac00 \uc0ac\uc6a9\ub429\ub2c8\ub2e4."}
+          </p>
+
           <div className="settings-field">
-            <label className="settings-label">예시 코드 언어</label>
+            <label className="settings-label">{"\uc608\uc2dc \ucf54\ub4dc \uc5b8\uc5b4"}</label>
             <div className="settings-lang-row">
               {(["c", "java", "python"] as const).map((v) => (
                 <label key={v} className={`settings-lang-btn${lang === v ? " active" : ""}`}>
@@ -320,14 +505,20 @@ function SettingsModal({ open, onClose, apiKey, onApiKeyChange, lang, onLangChan
             </div>
           </div>
           <div className="settings-field">
-            <label className="settings-label">백엔드 실행 명령</label>
+            <label className="settings-label">{"\ubc31\uc5d4\ub4dc \uc2e4\ud589 \uba85\ub839"}</label>
             <code className="settings-code">cd backend → uvicorn main:app --reload --port 8000</code>
+          </div>
+
+          <div className="settings-footer-actions">
+            <button type="button" className="secondary" onClick={onClose}>{"\ucde8\uc18c"}</button>
+            <button type="button" className="btn-settings-save" onClick={handleSave}>{"\uc800\uc7a5"}</button>
           </div>
         </div>
       </div>
     </div>
   );
 }
+
 
 /* ─── Tauri 백엔드 준비 대기 훅 ─── */
 const IS_TAURI_PROD =
@@ -337,46 +528,56 @@ const IS_TAURI_PROD =
     (window.location.protocol === "https:" && window.location.hostname === "tauri.localhost"));
 
 function useBackendReady() {
-  const [ready, setReady] = useState(!IS_TAURI_PROD);
+  /** Tauri release or Vite dev: poll /api/health until FastAPI is up. */
+  const needsBackendPoll = IS_TAURI_PROD || api.getApiPrefix() === "";
+  const [ready, setReady] = useState(!needsBackendPoll);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!IS_TAURI_PROD) return;
+    if (!needsBackendPoll) return;
     let cancelled = false;
     const poll = async () => {
+      const url = api.apiHealthUrl();
       for (let i = 0; i < 40; i++) {
         if (cancelled) return;
         try {
-          const res = await fetch("http://127.0.0.1:8000/api/health");
-          if (res.ok) { setReady(true); return; }
-        } catch {}
+          const res = await fetch(url);
+          if (res.ok) {
+            setReady(true);
+            return;
+          }
+        } catch {
+          /* retry */
+        }
         setAttempt(i + 1);
         await new Promise((r) => setTimeout(r, 800));
       }
     };
     poll();
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [needsBackendPoll]);
 
-  return { ready, attempt };
+  return { ready, attempt, needsBackendPoll };
 }
 
 /* ─── App ─── */
 type InputMode = "direct" | "file";
 
 export default function App() {
-  const { ready: backendReady, attempt: backendAttempt } = useBackendReady();
+  const { ready: backendReady, attempt: backendAttempt, needsBackendPoll } = useBackendReady();
 
   /* 설정 */
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [codeVisible, setCodeVisible] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("logic-map-apikey") ?? "");
+  const [aiSettings, setAiSettings] = useState<AiSettings>(() => api.loadAiSettings());
+  const creds = useMemo(() => api.credentialsFromSettings(aiSettings), [aiSettings]);
   const [lang, setLang] = useState<CodeLang>(() => {
     const s = localStorage.getItem("logic-map-lang");
     return (s === "c" || s === "java" || s === "python") ? s : "java";
   });
 
-  useEffect(() => { localStorage.setItem("logic-map-apikey", apiKey); }, [apiKey]);
   useEffect(() => { localStorage.setItem("logic-map-lang", lang); }, [lang]);
 
   /* 입력 모드 */
@@ -433,7 +634,11 @@ export default function App() {
   const setOk  = (msg: string) => { setStatus(msg); setStatusType("ok"); setErrorDetail(""); };
 
   const needApiKey = () => {
-    if (!apiKey.trim()) { setErr("⚙️ 설정에서 OpenAI API 키를 먼저 입력해주세요."); setSettingsOpen(true); return true; }
+    if (!api.activeProviderReady(aiSettings)) {
+      setErr("⚙️ 설정에서 현재 선택한 AI 제공자의 API 키·모델(DS는 베이스 URL)을 입력한 후 저장하세요.");
+      setSettingsOpen(true);
+      return true;
+    }
     return false;
   };
 
@@ -492,7 +697,7 @@ export default function App() {
       const { text, filename } = await api.extractTextFromFile(f);
       setRequirements(text); setUploadedFilename(filename);
       setOk(`"${filename}" 추출 완료`);
-    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setErr(apiErr(e)); }
   };
 
   const onUploadForPreAnalysis = async (f: File | null | undefined) => {
@@ -504,12 +709,12 @@ export default function App() {
     setStatus(`"${f.name}" AI 학습 중…`);
     setStatusType(""); setErrorDetail("");
     try {
-      const result = await api.preAnalyzeFile(f, apiKey);
+      const result = await api.preAnalyzeFile(f, creds);
       setFileAnalysis(result);
       setUploadedFilename(f.name);
       if (result.extracted_text) setRequirements(result.extracted_text);
       setOk(`"${f.name}" 학습 완료 — 아래 분석 결과를 확인하고 다이어그램을 생성하세요`);
-    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setErr(apiErr(e)); }
     finally { setLoadingPreAnalyze(false); }
   };
 
@@ -522,7 +727,7 @@ export default function App() {
         fileAnalysis.extracted_text || requirements,
         fileAnalysis,
         lang,
-        apiKey,
+        creds,
       );
       setChatMessages([]);
       setDocumentContext(JSON.stringify({
@@ -534,7 +739,7 @@ export default function App() {
         exception_cases: fileAnalysis.exception_cases,
       }));
       applyResult(data, "다이어그램 생성 완료");
-    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setErr(apiErr(e)); }
     finally { setLoadingGen(false); }
   };
 
@@ -553,14 +758,14 @@ export default function App() {
     const q = (inputMode === "direct" ? directQuery : requirements).trim();
     if (!q) { setErr("요건 또는 질문을 입력하세요."); return; }
     if (needApiKey()) return;
-    setLoadingGen(true); setStatus("OpenAI 호출 중…"); setStatusType(""); setErrorDetail("");
+    setLoadingGen(true); setStatus("AI 호출 중…"); setStatusType(""); setErrorDetail("");
     try {
-      const data = await api.generateDiagram(q, lang, apiKey);
+      const data = await api.generateDiagram(q, lang, creds);
       if (inputMode === "direct") setRequirements(q);
       setChatMessages([]);
       setDocumentContext("");
       applyResult(data);
-    } catch (e) { const m = e instanceof Error ? e.message : String(e); setErr(m, m); }
+    } catch (e) { const m = apiErr(e); setErr(m, m); }
     finally { setLoadingGen(false); }
   };
 
@@ -573,11 +778,11 @@ export default function App() {
     setChatMessages(newMsgs); setChatInput("");
     setLoadingChat(true); setStatus("다이어그램 수정 중…"); setStatusType("");
     try {
-      const data = await api.chatRefine(q, currentMermaid, blocks, chatMessages, lang, apiKey, documentContext || undefined);
+      const data = await api.chatRefine(q, currentMermaid, blocks, chatMessages, lang, creds, documentContext || undefined);
       setChatMessages((prev) => [...prev, { role: "assistant", content: data.summary ?? "업데이트했습니다." }]);
       applyResult(data, data.summary ?? "다이어그램 업데이트 완료");
     } catch (e) {
-      const m = e instanceof Error ? e.message : String(e);
+      const m = apiErr(e);
       setChatMessages((prev) => [...prev, { role: "assistant", content: `⚠️ 오류: ${m}` }]);
       setErr(m, m);
     } finally { setLoadingChat(false); }
@@ -603,12 +808,12 @@ export default function App() {
     try {
       const mermaid = diagramRef.current?.getMermaid() ?? mermaidImportText;
       const meta = blocks.map(({ id, title, description }) => ({ id, title, description }));
-      const filled = await api.fillBlockCodes(requirements, mermaid, meta, lang, apiKey);
+      const filled = await api.fillBlockCodes(requirements, mermaid, meta, lang, creds);
       const byId: Record<string, string> = {};
       filled.forEach((b) => { byId[String(b.id)] = b.code ?? ""; });
       setBlocks((prev) => prev.map((b) => Object.prototype.hasOwnProperty.call(byId, b.id) ? { ...b, code: byId[b.id] } : b));
       setOk(lang + " 예시 코드 반영 완료");
-    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setErr(apiErr(e)); }
     finally { setLoadingFill(false); }
   };
 
@@ -879,14 +1084,25 @@ export default function App() {
 
   /* ─── JSX ─── */
 
-  // Tauri 프로덕션에서 백엔드 사이드카가 준비될 때까지 스플래시 표시
+  /* Splash until /api/health OK (Tauri: sidecar; browser dev: uvicorn on :8000) */
   if (!backendReady) {
+    const browserWaitingBackend = needsBackendPoll && !IS_TAURI_PROD;
     return (
       <div className="tauri-splash">
         <div className="tauri-splash-inner">
           <div className="tauri-splash-logo">⬡</div>
           <h2>Logic Mapper</h2>
-          <p className="tauri-splash-msg">백엔드 엔진을 시작하는 중…</p>
+          <p className="tauri-splash-msg">
+            {browserWaitingBackend ? "API 서버 연결 대기 중…" : "백엔드 엔진을 시작하는 중…"}
+          </p>
+          {browserWaitingBackend ? (
+            <p className="tauri-splash-hint">
+              <span className="tauri-splash-hint-line">
+                backend 폴더에서 아래 명령을 실행한 뒤 이 페이지를 새로고칙하세요.
+              </span>
+              <code className="tauri-splash-code">uvicorn main:app --reload --host 127.0.0.1 --port 8000</code>
+            </p>
+          ) : null}
           <div className="tauri-splash-bar">
             <div className="tauri-splash-fill" style={{ width: `${Math.min(backendAttempt * 2.5, 95)}%` }} />
           </div>
@@ -900,9 +1116,12 @@ export default function App() {
     <>
       {/* 설정 모달 */}
       <SettingsModal
-        open={settingsOpen} onClose={() => setSettingsOpen(false)}
-        apiKey={apiKey} onApiKeyChange={setApiKey}
-        lang={lang} onLangChange={setLang}
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        aiSettings={aiSettings}
+        onSave={(s) => { setAiSettings(s); api.saveAiSettings(s); setSettingsOpen(false); }}
+        lang={lang}
+        onLangChange={setLang}
       />
 
       <header className="app-header">
@@ -920,11 +1139,11 @@ export default function App() {
           </label>
           <button
             type="button"
-            className={`btn-settings${apiKey ? " has-key" : " no-key"}`}
+            className={`btn-settings${api.activeProviderReady(aiSettings) ? " has-key" : " no-key"}`}
             onClick={() => setSettingsOpen(true)}
             title="설정"
           >
-            ⚙️ 설정{!apiKey && <span className="settings-badge">!</span>}
+            ⚙️ 설정{!api.activeProviderReady(aiSettings) && <span className="settings-badge">!</span>}
           </button>
         </div>
       </header>

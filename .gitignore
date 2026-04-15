@@ -14,6 +14,15 @@ frontend/dist/
 frontend/.vite/
 frontend/tsconfig.tsbuildinfo
 
+# Rust / Tauri (로컬 빌드 산출물 — GitHub 용량 제한)
+frontend/src-tauri/target/
+frontend/src-tauri/target-local/
+
+# PyInstaller / 설치 빌드 산출물 (build.ps1로 재생성)
+build-backend/
+dist-backend/
+frontend/src-tauri/binaries/*.exe
+
 # IDE
 .vscode/
 .idea/

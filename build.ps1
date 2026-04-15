@@ -70,6 +70,10 @@ if (-not (Test-Path "$IconDir\32x32.png")) {
 }
 
 Write-Step "5/5 - Build Tauri app (with sidecar)"
+# Use a target dir inside the repo so builds work when a global CARGO_TARGET_DIR
+# (e.g. C:\cargo-target) hits PermissionDenied on this machine.
+$TauriTarget = "$Root\frontend\src-tauri\target-local"
+$env:CARGO_TARGET_DIR = $TauriTarget
 Set-Location "$Root\frontend"
 npx tauri build --config src-tauri/tauri.build.conf.json
 if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] Tauri build failed" -ForegroundColor Red; exit 1 }
@@ -77,6 +81,6 @@ if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] Tauri build failed" -ForegroundCol
 Write-Host "`n============================================" -ForegroundColor Green
 Write-Host " Build complete!" -ForegroundColor Green
 Write-Host " Output:" -ForegroundColor Green
-Write-Host "   MSI  : frontend\src-tauri\target\release\bundle\msi\" -ForegroundColor Green
-Write-Host "   NSIS : frontend\src-tauri\target\release\bundle\nsis\" -ForegroundColor Green
+Write-Host "   MSI  : frontend\src-tauri\target-local\release\bundle\msi\" -ForegroundColor Green
+Write-Host "   NSIS : frontend\src-tauri\target-local\release\bundle\nsis\" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor Green
