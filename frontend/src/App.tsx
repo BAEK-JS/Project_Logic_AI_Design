@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import * as api from "./api";
 import type { ChatMessage, FileAnalysisResult } from "./api";
 import type { CodeLang, LogicBlock } from "./types";
@@ -43,41 +43,159 @@ function BlockCard({ block, active, codeLang, detailsRef, onChange, onDelete }: 
   const langLabel = codeLang === "c" ? "C" : codeLang === "java" ? "Java" : "Python";
   const lines = block.description.split("\n");
   const hasAssumption = block.description.includes("[assumption]");
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [descEditing, setDescEditing] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const descTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (titleEditing && titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    }
+  }, [titleEditing]);
+
+  useEffect(() => {
+    if (descEditing && descTextareaRef.current) {
+      descTextareaRef.current.focus();
+      const len = descTextareaRef.current.value.length;
+      descTextareaRef.current.setSelectionRange(len, len);
+    }
+  }, [descEditing]);
+
+  const onDescKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      setDescEditing(false);
+    }
+  };
+
+  const onTitleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      setTitleEditing(false);
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      setTitleEditing(false);
+    }
+  };
+
+  const stopSummaryToggle = (e: MouseEvent<Element> | PointerEvent<Element>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   return (
     <details ref={detailsRef} className={`block-card${active ? " active" : ""}`} data-block-id={block.id}>
       <summary>
         <span className="block-summary-chevron" aria-hidden>▸</span>
         <div className="block-summary-left">
-          <input className="block-title-input" value={block.title}
-            onChange={(e) => onChange("title", e.target.value)} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} placeholder="노드 이름" title="노드(구간) 이름 — 클릭해도 접히지 않습니다" />
-          <span className="block-id">{block.id}</span>
-          {hasAssumption && <span className="block-assumption-badge">추정</span>}
+          {!titleEditing ? (
+            <>
+              <div className="block-title-row">
+                <span className="block-title-display" title={block.title || undefined}>
+                  {block.title.trim() ? block.title : <span className="block-title-placeholder">이름 없음</span>}
+                </span>
+                <button
+                  type="button"
+                  className="block-title-edit-btn"
+                  title="구간 이름 편집"
+                  onClick={(e) => {
+                    stopSummaryToggle(e);
+                    setTitleEditing(true);
+                  }}
+                >
+                  편집
+                </button>
+              </div>
+              <div className="block-summary-meta">
+                <span className="block-id">{block.id}</span>
+                {hasAssumption && <span className="block-assumption-badge">추정</span>}
+              </div>
+            </>
+          ) : (
+            <>
+              <input
+                ref={titleInputRef}
+                className="block-title-input block-title-input--editing"
+                value={block.title}
+                onChange={(e) => onChange("title", e.target.value)}
+                onClick={stopSummaryToggle}
+                onPointerDown={stopSummaryToggle}
+                onKeyDown={onTitleKeyDown}
+                placeholder="구간 이름"
+                aria-label="구간 이름 편집"
+              />
+              <div className="block-title-edit-actions">
+                <button
+                  type="button"
+                  className="block-title-done-btn"
+                  onClick={(e) => {
+                    stopSummaryToggle(e);
+                    setTitleEditing(false);
+                  }}
+                >
+                  완료
+                </button>
+              </div>
+              <div className="block-summary-meta">
+                <span className="block-id">{block.id}</span>
+                {hasAssumption && <span className="block-assumption-badge">추정</span>}
+              </div>
+            </>
+          )}
         </div>
         <button className="block-delete" type="button" title="블록 삭제"
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}>✕</button>
       </summary>
       <div className="block-body">
-        <div className="block-desc-view">
-          {lines.map((line, i) => {
-            const isAssumptionLine = line.includes("[assumption]");
-            return (
-              <p key={i} className={`block-desc-line${isAssumptionLine ? " assumption" : ""}`}>
-                {line.replace("[assumption]", "").trim() || <br />}
-                {isAssumptionLine && <span className="assumption-tag">[추정]</span>}
-              </p>
-            );
-          })}
-          {!block.description && (
-            <p className="block-desc-empty">설명이 없습니다.</p>
+        <div className="block-desc-section">
+          {!descEditing ? (
+            <>
+              <div className="block-desc-view">
+                {lines.map((line, i) => {
+                  const isAssumptionLine = line.includes("[assumption]");
+                  return (
+                    <p key={i} className={`block-desc-line${isAssumptionLine ? " assumption" : ""}`}>
+                      {line.replace("[assumption]", "").trim() || <br />}
+                      {isAssumptionLine && <span className="assumption-tag">[추정]</span>}
+                    </p>
+                  );
+                })}
+                {!block.description && (
+                  <p className="block-desc-empty">설명이 없습니다.</p>
+                )}
+              </div>
+              <div className="block-desc-actions">
+                <button
+                  type="button"
+                  className="block-desc-edit-toggle"
+                  onClick={() => setDescEditing(true)}
+                >
+                  수정
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <textarea
+                ref={descTextareaRef}
+                className="block-desc-edit"
+                value={block.description}
+                onChange={(e) => onChange("description", e.target.value)}
+                onKeyDown={onDescKeyDown}
+                placeholder="이 구간의 업무 설명을 입력하세요"
+                rows={5}
+              />
+              <div className="block-desc-actions">
+                <button type="button" className="block-desc-done" onClick={() => setDescEditing(false)}>
+                  완료
+                </button>
+              </div>
+            </>
           )}
         </div>
-        <textarea
-          className="block-desc-edit"
-          value={block.description}
-          onChange={(e) => onChange("description", e.target.value)}
-          placeholder="이 구간의 업무 설명을 입력하세요"
-          rows={4}
-        />
         <div className="block-code-wrap">
           <div className="block-code-label">
             예시 코드 <span className="block-code-lang">({langLabel})</span>
@@ -1030,7 +1148,7 @@ export default function App() {
           </div>
           <div className="code-panel-layout">
             <p className="hint code-hint">
-              구간 <strong>요약 줄(▸)</strong>을 누르면 아래에 설명·예시 코드가 펼쳐집니다 · 노드 이름 칸은 짧게 표시되며, 클릭해 입력하면 넓어집니다 · 하단 <strong>AI 예시 코드 넣기</strong>(API 키) · <span style={{color:"var(--accent)"}}>추정</span>은 AI 가정
+              <strong>요약 줄(▸)</strong> 클릭 시 설명·예시 코드가 펼쳐집니다 · 구간 이름은 <strong>편집</strong> → 입력 → <strong>완료</strong>(Enter/Esc) · 업무 설명도 <strong>수정</strong>/<strong>완료</strong> · 하단 <strong>AI 예시 코드 넣기</strong>(API 키) · <span style={{color:"var(--accent)"}}>추정</span>은 AI 가정
             </p>
             <div className="blocks">
               {blocks.map((b, i) => (
