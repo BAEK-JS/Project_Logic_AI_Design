@@ -350,10 +350,14 @@ button:disabled {
   padding: 0.5rem 0.75rem;
   border-top: 1px solid var(--border);
   background: rgba(0,0,0,0.1);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
 .code-panel-footer button {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 7.5rem;
 }
 
 .blocks-empty {
@@ -392,16 +396,31 @@ button:disabled {
 }
 
 .block-card summary {
-  padding: 0.5rem 0.65rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.4rem;
   cursor: pointer;
   font-weight: 600;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   list-style: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
-  min-height: 42px;      /* 항상 충분한 클릭 영역 */
+  gap: 0.35rem;
+  min-height: 34px;
+}
+
+.block-summary-chevron {
+  flex-shrink: 0;
+  width: 1rem;
+  text-align: center;
+  font-size: 0.65rem;
+  color: var(--muted);
+  transition: transform 0.15s ease, color 0.15s;
+  user-select: none;
+}
+
+.block-card[open] > summary .block-summary-chevron {
+  transform: rotate(90deg);
+  color: var(--accent);
 }
 
 .block-card summary::-webkit-details-marker {
@@ -432,26 +451,26 @@ button:disabled {
 .block-summary-left {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   flex: 1;
   min-width: 0;
 }
 
-/* 블록 제목 인라인 편집 */
+/* 노드 이름: 한 줄에서 짧게 — 포커스 시 편집 폭 확장 */
 .block-title-input {
   width: auto;
-  flex: 1;
-  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 7.5rem;
+  min-width: 3.25rem;
   background: transparent;
   border: none;
   border-bottom: 1px solid transparent;
   color: var(--text);
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   font-weight: 600;
   font-family: inherit;
-  padding: 0.1rem 0.25rem;
-  border-radius: 0;
-  /* 제목이 길어도 잘리지 않고 줄임표로 표시 */
+  padding: 0.12rem 0.2rem;
+  border-radius: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -462,6 +481,12 @@ button:disabled {
   background: rgba(255, 255, 255, 0.06);
   border-bottom-color: var(--accent);
   outline: none;
+}
+
+.block-title-input:focus {
+  flex: 1 1 auto;
+  max-width: 100%;
+  min-width: 0;
 }
 
 /* 블록 삭제 버튼 */
@@ -489,21 +514,21 @@ button:disabled {
 }
 
 .block-body {
-  padding: 0 0.65rem 0.65rem;
+  padding: 0 0.55rem 0.55rem;
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 
 /* ─── 구간별 업무 설명 뷰 ─── */
 .block-desc-view {
-  margin-top: 0.4rem;
-  padding: 0.6rem 0.75rem;
+  margin-top: 0.3rem;
+  padding: 0.45rem 0.55rem;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
   border-radius: 6px;
-  min-height: 60px;
+  min-height: 44px;
 }
 
 .block-desc-line {
@@ -568,6 +593,49 @@ button:disabled {
 .block-desc-edit:focus {
   border-color: var(--accent);
   color: var(--text);
+  outline: none;
+}
+
+.block-code-wrap {
+  margin-top: 0.65rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+}
+
+.block-code-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.block-code-lang {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.block-code-edit {
+  width: 100%;
+  min-height: 72px;
+  font-size: 0.75rem;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  line-height: 1.45;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 0.5rem 0.6rem;
+  resize: vertical;
+  transition: border-color 0.15s;
+}
+
+.block-code-edit::placeholder {
+  color: color-mix(in srgb, var(--muted) 75%, transparent);
+}
+
+.block-code-edit:hover,
+.block-code-edit:focus {
+  border-color: var(--accent);
   outline: none;
 }
 

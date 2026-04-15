@@ -5,6 +5,7 @@ import type { CodeLang, LogicBlock } from "./types";
 import type { Node, Edge } from "@xyflow/react";
 import { DiagramEditor, type DiagramHandle } from "./DiagramEditor";
 import { parseMermaidToFlow } from "./mermaidParser";
+import { stubForBlock } from "./exampleCode";
 
 const ACCEPT_EXTS = ".txt,.md,.csv,.pdf,.docx,.xlsx,.log";
 
@@ -32,20 +33,23 @@ function normalizeBlocks(blocks: LogicBlock[]): LogicBlock[] {
 
 /* ─── BlockCard ─── */
 interface BlockCardProps {
-  block: LogicBlock; index: number; active: boolean;
+  block: LogicBlock; active: boolean;
+  codeLang: CodeLang;
   detailsRef: (el: HTMLDetailsElement | null) => void;
   onChange: (field: "title" | "description" | "code", value: string) => void;
   onDelete: () => void;
 }
-function BlockCard({ block, index, active, detailsRef, onChange, onDelete }: BlockCardProps) {
+function BlockCard({ block, active, codeLang, detailsRef, onChange, onDelete }: BlockCardProps) {
+  const langLabel = codeLang === "c" ? "C" : codeLang === "java" ? "Java" : "Python";
   const lines = block.description.split("\n");
   const hasAssumption = block.description.includes("[assumption]");
   return (
-    <details ref={detailsRef} className={`block-card${active ? " active" : ""}`} open={index === 0} data-block-id={block.id}>
+    <details ref={detailsRef} className={`block-card${active ? " active" : ""}`} data-block-id={block.id}>
       <summary>
+        <span className="block-summary-chevron" aria-hidden>▸</span>
         <div className="block-summary-left">
           <input className="block-title-input" value={block.title}
-            onChange={(e) => onChange("title", e.target.value)} onClick={(e) => e.stopPropagation()} placeholder="구간 제목" />
+            onChange={(e) => onChange("title", e.target.value)} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} placeholder="노드 이름" title="노드(구간) 이름 — 클릭해도 접히지 않습니다" />
           <span className="block-id">{block.id}</span>
           {hasAssumption && <span className="block-assumption-badge">추정</span>}
         </div>
@@ -74,6 +78,19 @@ function BlockCard({ block, index, active, detailsRef, onChange, onDelete }: Blo
           placeholder="이 구간의 업무 설명을 입력하세요"
           rows={4}
         />
+        <div className="block-code-wrap">
+          <div className="block-code-label">
+            예시 코드 <span className="block-code-lang">({langLabel})</span>
+          </div>
+          <textarea
+            className="block-code-edit"
+            value={block.code}
+            onChange={(e) => onChange("code", e.target.value)}
+            placeholder="비워 두면 이 패널 하단의 ‘AI 예시 코드 넣기’ 또는 상단의 ‘예시 코드만 채우기(API)’로 채울 수 있습니다."
+            rows={4}
+            spellCheck={false}
+          />
+        </div>
       </div>
     </details>
   );
@@ -477,6 +494,27 @@ export default function App() {
     finally { setLoadingFill(false); }
   };
 
+  /** OpenAI 없이 설정 언어 기준 스켈레톤만 채움 */
+  const fillLocalExampleCodes = (mode: "empty" | "all") => {
+    if (!blocks.length) {
+      setErr("먼저 블록을 만드세요.");
+      return;
+    }
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (mode === "empty" && b.code.trim()) return b;
+        return { ...b, code: stubForBlock(lang, b) };
+      }),
+    );
+    setStatusType("");
+    setErrorDetail("");
+    setOk(
+      mode === "empty"
+        ? `로컬 예시 코드: 비어 있는 구간만 채움 (${lang})`
+        : `로컬 예시 코드: 모든 구간 덮어씀 (${lang})`,
+    );
+  };
+
   const onExportPDF = async () => {
     if (!blocks.length && rfInitNodes.length === 0) {
       setErr("내보낼 다이어그램이 없습니다. 먼저 다이어그램을 생성하세요.");
@@ -515,12 +553,17 @@ export default function App() {
         diagramDataUrl = dc.toDataURL("image/png");
       }
 
+      const langPdf = lang === "c" ? "C" : lang === "java" ? "Java" : "Python";
       const blockHtml = blocks
         .map((b, i) => {
           const title = escapeHtml(b.title || "(제목 없음)");
           const id = escapeHtml(b.id);
           const raw = (b.description || "").replace(/\[assumption\]/g, "[\uCD94\uC815]");
           const descHtml = escapeHtml(raw).replace(/\r\n/g, "\n").split("\n").join("<br/>");
+          const codeRaw = (b.code || "").trim();
+          const codeSection = codeRaw
+            ? `<div class="pdf-code-h">예시 코드 <span class="pdf-code-lang">(${langPdf})</span></div><pre class="pdf-block-code">${escapeHtml(codeRaw)}</pre>`
+            : `<div class="pdf-code-h pdf-code-h--empty">예시 코드 <span class="pdf-muted">(없음)</span></div>`;
           return `
             <div class="pdf-block">
               <div class="pdf-block-hd">
@@ -529,6 +572,7 @@ export default function App() {
                 <span class="pdf-b-id">${id}</span>
               </div>
               <div class="pdf-block-body">${descHtml || '<span class="pdf-muted">설명 없음</span>'}</div>
+              ${codeSection}
             </div>`;
         })
         .join("");
@@ -589,6 +633,26 @@ export default function App() {
           .pdf-block-body {
             padding: 12px 14px; background: #f8fafc; color: #334155; font-size: 12.5px;
             line-height: 1.7; letter-spacing: 0; word-break: keep-all; overflow-wrap: anywhere; white-space: normal;
+          }
+          .pdf-code-h {
+            font-size: 11px; font-weight: 700; color: #475569;
+            padding: 8px 14px 6px; background: #f1f5f9;
+            border-top: 1px dashed #cbd5e1;
+          }
+          .pdf-code-h--empty { padding-bottom: 10px; }
+          .pdf-code-lang { font-weight: 600; color: #3d8bfd; }
+          .pdf-block-code {
+            margin: 0;
+            padding: 10px 14px 12px;
+            background: #0f172a;
+            color: #e2e8f0;
+            font-family: ui-monospace, "Consolas", "Cascadia Mono", monospace;
+            font-size: 10.5px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            border-top: 1px solid #334155;
           }
           .pdf-muted { color: #94a3b8; }
         </style>
@@ -856,6 +920,12 @@ export default function App() {
                 <button type="button" className="secondary" onClick={onFillCodes} disabled={loadingFill}>
                   {loadingFill ? "채우는 중…" : "예시 코드만 채우기(API)"}
                 </button>
+                <button type="button" className="secondary" onClick={() => fillLocalExampleCodes("empty")} disabled={!blocks.length}>
+                  로컬 예시(빈 칸)
+                </button>
+                <button type="button" className="secondary" onClick={() => fillLocalExampleCodes("all")} disabled={!blocks.length}>
+                  로컬 예시(전체)
+                </button>
               </div>
             </details>
 
@@ -960,11 +1030,12 @@ export default function App() {
           </div>
           <div className="code-panel-layout">
             <p className="hint code-hint">
-              노드 클릭 시 해당 구간으로 이동 · 설명은 직접 편집 가능 · <span style={{color:"var(--accent)"}}>추정</span> 태그는 AI가 가정한 내용
+              구간 <strong>요약 줄(▸)</strong>을 누르면 아래에 설명·예시 코드가 펼쳐집니다 · 노드 이름 칸은 짧게 표시되며, 클릭해 입력하면 넓어집니다 · 하단 <strong>AI 예시 코드 넣기</strong>(API 키) · <span style={{color:"var(--accent)"}}>추정</span>은 AI 가정
             </p>
             <div className="blocks">
               {blocks.map((b, i) => (
-                <BlockCard key={b.id + "-" + i} block={b} index={i}
+                <BlockCard key={b.id + "-" + i} block={b}
+                  codeLang={lang}
                   active={activeBlockId === b.id}
                   detailsRef={setBlockRef(b.id)}
                   onChange={(field, value) => updateBlock(i, field, value)}
@@ -978,6 +1049,14 @@ export default function App() {
             <div className="code-panel-footer">
               <button type="button" className="secondary" onClick={addEmptyBlock}>
                 + 구간 추가
+              </button>
+              <button
+                type="button"
+                onClick={() => void onFillCodes()}
+                disabled={!blocks.length || loadingFill}
+                title="설정에 저장한 OpenAI API 키로 각 구간 예시 코드를 생성합니다"
+              >
+                {loadingFill ? "AI 코드 생성 중…" : "AI 예시 코드 넣기"}
               </button>
             </div>
           </div>
