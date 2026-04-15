@@ -12,15 +12,22 @@ export interface FileAnalysisResult {
 }
 
 /**
- * Tauri v2 프로덕션: http://tauri.localhost 에서 서빙
- * Tauri 개발 모드:  http://localhost:5173 (Vite 프록시 사용)
- * 일반 브라우저:    http://localhost:5173 (Vite 프록시 사용)
+ * Vite dev(5173 등): /api → 프록시로 FastAPI
+ * Tauri 프로덕션(tauri.localhost 등): 프록시 없음 → 반드시 로컬 백엔드 절대 URL 사용
+ * (__TAURI_INTERNALS__ 만으로 판별하면 일부 빌드에서 누락되어 /api 가 정적 서버로 가 404 발생)
  */
-const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-const IS_TAURI_DEV = IS_TAURI && window.location.hostname === "localhost";
-const IS_TAURI_PROD = IS_TAURI && !IS_TAURI_DEV;
+function apiBaseUrl(): string {
+  if (typeof window === "undefined") return "";
+  const h = window.location.hostname;
+  const port = window.location.port;
+  const viteDev =
+    (h === "localhost" || h === "127.0.0.1") &&
+    (port === "5173" || port === "1420");
+  if (viteDev) return "";
+  return "http://127.0.0.1:8000";
+}
 
-const prefix = IS_TAURI_PROD ? "http://127.0.0.1:8000" : "";
+const prefix = apiBaseUrl();
 
 async function parseError(res: Response): Promise<string> {
   // body 스트림은 한 번만 읽기 — text로 먼저 읽고 JSON 파싱 시도

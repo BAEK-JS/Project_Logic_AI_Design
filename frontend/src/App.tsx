@@ -197,7 +197,9 @@ function SettingsModal({ open, onClose, apiKey, onApiKeyChange, lang, onLangChan
 /* ─── Tauri 백엔드 준비 대기 훅 ─── */
 const IS_TAURI_PROD =
   typeof window !== "undefined" &&
-  (window.location.protocol === "tauri:" || window.location.protocol === "asset:");
+  (window.location.protocol === "tauri:" ||
+    window.location.protocol === "asset:" ||
+    (window.location.protocol === "https:" && window.location.hostname === "tauri.localhost"));
 
 function useBackendReady() {
   const [ready, setReady] = useState(!IS_TAURI_PROD);
